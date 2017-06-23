@@ -60,10 +60,10 @@ train_size = train_file.values()[0].shape[0]
 num_GOterms = train_file['labels'].shape[1]
 
 # define placeholder for DNA sequences (represented via one-hot encoding)
-dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1))
+dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='label')
 
 # define placeholder for species labels
-labels = tf.placeholder(tf.float32,shape=(None,num_GOterms))
+labels = tf.placeholder(tf.float32,shape=(None,num_GOterms),name='label')
 
 # build layers of network
 conv1 = Conv2D(num_filters,[filter_height1,filter_width],activation='relu', \
@@ -99,9 +99,6 @@ binacc = K.mean(binacc_pred)
 # determine number of total iterations
 totalIterations = int(epochs/batch_size*train_size)
 
-# initialize model saver
-saver = tf.train.Saver(max_to_keep=4)
-
 # set session and initialize all variables
 sess = tf.Session()
 K.set_session(sess)
@@ -109,6 +106,9 @@ init_op = tf.global_variables_initializer()
 sess.run(init_op)
 
 with sess.as_default():
+
+    # initialize model saver
+    saver = tf.train.Saver(max_to_keep=4)
 
     print('epochs\tloss\tbinacc\tonematch\tval_binacc\tval_onematch')
 

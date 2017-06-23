@@ -22,7 +22,7 @@ from keras import callbacks
 from keras.utils.io_utils import HDF5Matrix
 from sklearn.metrics import hamming_loss
 
-species_dir = 'sCer_sPom' #str(sys.argv[1])
+species_dir = str(sys.argv[1])
 print(species_dir)
 train_h5file = 'data/h5datasets/' + str(species_dir) + '/train.h5'
 validation_h5file = 'data/h5datasets/' + str(species_dir) + '/validation.h5'
