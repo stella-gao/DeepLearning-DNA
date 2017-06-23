@@ -54,14 +54,13 @@ def read_fasta_seq(file_name):
         gene_name = gene_name.split('.')[0]
         gene_name = gene_name.split('_')[0]
         seq = ''
-        seq_dict[gene_name] = []
         for line in reader:
             if len(line) > 1:
-                # one hot encode completed sequence
-                if len(seq_dict) > 0:
-                    # if sufficiently low number of "N"
-                    if seq.count('N') <= 0.1*len(seq):
-                        seq_dict[gene_name] = one_hot_encode_sequence(seq)
+                # one hot encode completed sequence if sufficiently low 
+                # number of "N"
+                if seq.count('N') <= 0.1*len(seq) and len(seq) > 0:
+                    seq_dict[gene_name] = one_hot_encode_sequence(seq)
+
                 # read in header of new sequence
                 gene_name = line[1]
                 gene_name = gene_name.split('.')[0]
@@ -193,6 +192,22 @@ def getLabels(catcount_list):
 
 
 ### DNA SEQUENCE SLIDING WINDOW ###############################################
+
+def getrandWindow(seq_dict,window_size):
+    '''selects a random window of inputted size for all DNA regions represented
+    in an inputted dictionary of sequences sorted alphabetically by DNA region
+    name/gene name'''
+
+    all_windows = []
+    for reg in sorted(seq_dict.keys()):
+        onehot_seq = seq_dict[reg]
+        window = [np.zeros(window_size,dtype=np.float32) for i in range(4)]
+        randIdx = np.random.choice(range(onehot_seq.shape[1]-window_size),1)[0]
+        for j in range(4): # iterate through 4 bp arrays
+            window[j] = onehot_seq[j][randIdx:randIdx+window_size]
+        window = np.array(window)
+        all_windows.append(window)
+    return np.array(all_windows)
 
 def slideWindow(onehot_seq,window_size,step_size):
     '''takes as input a one-hot encoded DNA sequence and outputs windows of a

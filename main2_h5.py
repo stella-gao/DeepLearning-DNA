@@ -78,7 +78,7 @@ pool2 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', 
 drop2 = Dropout(0.5)(pool2)
 flat = Flatten()(drop2)
 FC = Dense(50,activation='relu',name='representation')(flat)
-preds = Dense(num_GOterms,activation='softmax')(FC)
+preds = Dense(num_GOterms,activation='sigmoid')(FC)
 
 # loss function
 loss = tf.reduce_mean(categorical_crossentropy(labels, preds))
