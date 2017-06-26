@@ -16,7 +16,7 @@ from keras import backend as K
 from keras.models import Sequential
 from keras.layers import Input, Dense, Lambda, Conv2D, concatenate, Reshape, AveragePooling2D, MaxPooling2D, Flatten, Dropout
 from keras.metrics import categorical_accuracy, binary_accuracy
-from keras.objectives import categorical_crossentropy
+from keras.objectives import categorical_crossentropy, binary_crossentropy
 from keras.optimizers import Adam
 from keras import callbacks
 from keras.utils.io_utils import HDF5Matrix
@@ -81,7 +81,8 @@ FC = Dense(50,activation='relu',name='representation')(flat)
 preds = Dense(num_GOterms,activation='sigmoid')(FC)
 
 # loss function
-loss = tf.reduce_mean(categorical_crossentropy(labels, preds))
+loss = tf.reduce_mean(binary_crossentropy(labels, preds))
+# loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels,logits=preds))
 
 # gradient descent optimizer (Adam)
 train_step = tf.train.AdamOptimizer(learning_rate=learning_rate). \

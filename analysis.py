@@ -1,6 +1,7 @@
 import csv
 import numpy as np
 import h5py
+import itertools
 
 import tensorflow as tf
 
@@ -37,11 +38,19 @@ def write_metadataGO(label_set,data_dir):
 	writer.writerow(['index','label'])
 	val_datsize = min(10000,f['labels'].shape[0])
 	for i in range(val_datsize):
+		metadata_Idxs = []
+		metadata_labels = []
+		# for j in range(f['labels'].shape[1]):
+		# 	if f['labels'][i][j] == 1:
+		# 		metadata_Idxs.append(str(j))
+		# 		metadata_labels.append(label_set[j])
+
 		if sum(f['labels'][i]) >= 2:
 			labelIdx = len(label_set)-1
 		else:
 			labelIdx = list(f['labels'][i]).index(max(f['labels'][i]))
 		writer.writerow([labelIdx,label_set[labelIdx]])
+		# writer.writerow(['+'.join(metadata_Idxs),'+'.join(metadata_labels)])
 
 	f.close()
 	g.close()
@@ -152,36 +161,64 @@ def filterLabels(representation_file,metadata_file,index_set,output_file):
 	f.close()
 	g.close()
 
-def write_projection(representation_file,method='PCA'):
+def write_projection(representation_file,output_file,method='PCA'):
 	'''performs an inputted dimensionality reduction method on the output of 
 	a representational layer and writes the projection to a .tsv file'''
 
-	
+	X = np.loadtxt(representation_file,delimiter='\t')
 
+	if method == 'PCA':
+		from sklearn.decomposition import PCA
+		model = PCA(n_components=2)
+		transformed_X = model.fit_transform(X)
 
-def GMM_analysis(data_file,num_clusters,gene_list):
+	elif method == 'tSNE':
+		from sklearn.manifold import TSNE
+		model = TSNE(n_components=2)
+		transformed_X = model.fit_transform(X) 
+
+	np.savetxt(output_file,transformed_X,delimiter='\t')
+
+def GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4):
 	'''uses a Gaussian mixture model to "cluster" the data projections from PCA
-	or tSNE and identifies regions of interest (as specified by the user), including
-	central genes and non-"core" genes
+	or tSNE and identifies genes that have high probabilities of belonging to 
+	more than 1 cluster
 
 	NOTE: the inputted data_file should be the output of the representational layer
 	or its projection from PCA or tSNE'''
 
 	from sklearn.mixture import GaussianMixture
 
+	# load h5 file containing gene name info
+	f = h5py.File(h5_file,'r')
+
 	# load representational layer output or its projection
 	X = np.loadtxt(data_file,delimiter='\t')
 
-	gmm = mixture.GaussianMixture(n_components=5, covariance_type='full').fit(X)
-plot_results(X, gmm.predict(X), gmm.means_, gmm.covariances_, 0,
-             'Gaussian Mixture')
+	# fit GMM to data and predict posterior probabilities per each component/species
+	gmm = GaussianMixture(n_components=num_clusters, covariance_type='full').fit(X)
+	preds = gmm.predict_proba(X)
+	print(gmm.means_)
+	# identify genes that are "between" clusters and the clusters they are between
+	combos = list(itertools.combinations(range(num_clusters),2))
+	betw_genes = {i:[] for i in combos}
+
+	for i in range(preds.shape[0]):
+		# get indices of prediction vector that have prob > threshold
+		inds = [Idx for Idx,x in enumerate(preds[i]>prob_threshold) if x]
+		if len(inds) > 1: # if multiple high probability clusters
+			betw_genes[tuple(inds)].append(f['genes'][i])
+
+	f.close()
+
+	return betw_genes
 
 representation_file = 'results/saved_models/sCer_cEleg_Mouse_Human/sCer_cEleg_Mouse_Human_val_rep.txt'
 metadata_file = 'results/saved_models/sCer_cEleg_Mouse_Human/sCer_cEleg_Mouse_Human_val_metadata.tsv'
 label_set = ['2','3']
 output_file = 'all4_Mouse_Human.tsv'
 
-filterLabels(representation_file,metadata_file,label_set,output_file)
+# filterLabels(representation_file,metadata_file,label_set,output_file)
 
 model_name = 'sCer_cEleg_Mouse_Human_model'
 model_dir = 'results/saved_models/sCer_cEleg_Mouse_Human/'
@@ -197,5 +234,11 @@ label_names = ['sCer','cEleg','Mouse','Human']
 # d = np.loadtxt('sCer_sPom_rep.txt',delimiter='\t')
 
 
-# write_metadata(['sCer','cEleg','Mouse','Human'],'sCer_cEleg_Mouse_Human','validation.h5')
-# write_metadataGO(['stress','cell_cycle','chrorg','multiple'],'sCer_stress+cc+chrorg')
+# write_metadata(['sCer','cEleg','Mouse','Human'],'new_sCer_cEleg_Mouse_Human','validation.h5')
+# write_metadataGO(['stress','cc','chrorg','multiple'],'sCer_stress+cc+chrorg')
+
+data_file = 'results/saved_models/sCer_cEleg_Mouse_Human/blah.txt'
+h5_file = 'data/h5datasets/sCer_cEleg_Mouse_Human/validation.h5'
+num_clusters = 4
+
+a = GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4)

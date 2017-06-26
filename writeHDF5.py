@@ -152,7 +152,8 @@ upstream_length = 1000
 promoter_length = 500
 window_step = 20
 
-species_list = ['sCer','cEleg','Mouse','Human']
+# species_list = ['sCer','cEleg','Mouse','Human']
+species_list = ['sCer','sBoul','sArb','sEub']
 
 seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
 sp in species_list]

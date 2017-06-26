@@ -16,7 +16,7 @@ def read_gtf(gtf_file):
                 if line[2] == 'gene':
                     annotations = line[8].split(';')
                     for annot in annotations:                
-                        if 'gene_name' in annot:
+                        if 'gene_id' in annot:
                             chrno = 'chr'+line[0]
                             if chrno not in annot_dict:
                                 annot_dict[chrno] = {}
@@ -106,7 +106,7 @@ def writeSequence(seq_dict,outfile_name):
     f.close()
 
 
-species = 'Human'
+species = 'sArb'
 ann_file = 'data/annotation_files/' + species + '.gtf.gz'
 genomedat_dir = 'data/genome_files/' + species
 promoter_length = 1000

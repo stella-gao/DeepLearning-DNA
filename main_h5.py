@@ -29,7 +29,7 @@ validation_h5file = 'data/h5datasets/' + str(species_dir) + '/validation.h5'
 promoter_length = 500
 
 # training parameters
-epochs = 12
+epochs = 20
 batch_size = 200
 
 # CNN hyperparameters
@@ -112,7 +112,7 @@ with sess.as_default():
             labels: batch['labels'], K.learning_phase(): 1})
 
         # log training and validation accuracy
-        if i%500 == 0:
+        if i%2000 == 0:
 
             epoch_num = i/train_size*batch_size
 

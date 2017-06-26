@@ -52,7 +52,7 @@ def read_fasta_seq(file_name):
         reader = csv.reader(f,delimiter=' ')
         gene_name = reader.next()[1]
         gene_name = gene_name.split('.')[0]
-        gene_name = gene_name.split('_')[0]
+        # gene_name = gene_name.split('_')[0]
         seq = ''
         for line in reader:
             if len(line) > 1:
@@ -64,7 +64,7 @@ def read_fasta_seq(file_name):
                 # read in header of new sequence
                 gene_name = line[1]
                 gene_name = gene_name.split('.')[0]
-                gene_name = gene_name.split('_')[0]
+                # gene_name = gene_name.split('_')[0]
                 seq = ''
             else:
                 seq += line[0]
@@ -235,6 +235,7 @@ def getallWindows(seq_dict,window_size,step_size):
     gene_list = []
 
     for reg in sorted(seq_dict):
+        print(reg)
         reg_windows = slideWindow(seq_dict[reg],window_size,step_size)
         all_dat.append(reg_windows)
         gene_list.extend([reg for i in range(len(reg_windows))])
