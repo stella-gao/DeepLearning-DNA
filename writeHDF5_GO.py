@@ -4,7 +4,7 @@ from model import *
 
 species = ['sCer'] #,'cEleg']
 species_list = ['cerevisiae'] #,'elegans']
-ontology_terms = ['stress','cell_cycle','chromosome_org']
+ontology_terms = ['stress','cell_cycle','chromosome_org','cell_loc','kinase','pyrophos']
 
 upstream_length = 1000
 promoter_length = 500

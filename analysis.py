@@ -234,11 +234,11 @@ label_names = ['sCer','cEleg','Mouse','Human']
 # d = np.loadtxt('sCer_sPom_rep.txt',delimiter='\t')
 
 
-# write_metadata(['sCer','cEleg','Mouse','Human'],'new_sCer_cEleg_Mouse_Human','validation.h5')
+write_metadata(['sCer','sBoul','sArb','sEub'],'new2_Sac4','validation.h5')
 # write_metadataGO(['stress','cc','chrorg','multiple'],'sCer_stress+cc+chrorg')
 
 data_file = 'results/saved_models/sCer_cEleg_Mouse_Human/blah.txt'
 h5_file = 'data/h5datasets/sCer_cEleg_Mouse_Human/validation.h5'
 num_clusters = 4
 
-a = GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4)
+# a = GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4)

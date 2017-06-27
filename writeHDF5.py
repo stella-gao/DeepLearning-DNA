@@ -38,62 +38,114 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
     # read in promoter sequences and convert to one-hot encoding sequences
 	seq_dicts = [read_fasta_seq(f) for f in seq_files]
 
-	if sampling_method == 1: # select all windows from randomly selected genes
-		# set size of examples for each species to be equal to each other
-		min_datsize = min([len(seq_dict) for seq_dict in seq_dicts])
-		subsetIdx = [np.random.choice(range(len(sd)),size=min_datsize,replace=False) \
-		    for sd in seq_dicts]
-		subset_regs = [[seq_dicts[i].keys()[j] for j in subsetIdx[i]] for i \
-		    in range(len(seq_dicts))]
-		new_seq_dicts = [{reg:seq_dicts[i][reg] for reg in subset_regs[i]} for i \
-		    in range(len(seq_dicts))]
+	if sampling_method == 1 or sampling_method == 2: 
+		if sampling_method == 1: # select all windows from randomly selected genes
+			# set size of examples for each species to be equal to each other
+			min_datsize = min([len(seq_dict) for seq_dict in seq_dicts])
+			subsetIdx = [np.random.choice(range(len(sd)),size=min_datsize,replace=False) \
+			    for sd in seq_dicts]
+			subset_regs = [[seq_dicts[i].keys()[j] for j in subsetIdx[i]] for i \
+			    in range(len(seq_dicts))]
+			new_seq_dicts = [{reg:seq_dicts[i][reg] for reg in subset_regs[i]} for i \
+			    in range(len(seq_dicts))]
 
-		# use sliding windows to get windows of DNA sequences for each region
+			# use sliding windows to get windows of DNA sequences for each region
+			print('creating windows...')
+			gene_windows = [getallWindows(seq_dict,promoter_length,window_step) \
+				for seq_dict in new_seq_dicts]
+			windows = [wind for wind,gene in gene_windows]
+			genes = [gene for wind,gene in gene_windows]
+
+		elif sampling_method == 2: # select randomly selected windows across all genes
+			print('creating windows...')
+			# get all possible windows for genes across all species
+			gene_windows = [getallWindows(seq_dict,promoter_length,window_step) \
+				for seq_dict in seq_dicts]
+
+			# randomly choose windows, genes for all windows, genes in each species
+			# (ensure number of windows represented is the same for each species)
+			min_datsize = min([len(gene_window[1]) for gene_window in gene_windows])
+			randIdx_list = [np.random.choice(range(len(gene_window[1])), \
+					size=min_datsize,replace=False) for gene_window in gene_windows]
+			windows = [gene_windows[i][0][randIdx_list[i]] for i in \
+				range(len(gene_windows))]
+			genes = [[gene_windows[i][1][j] for j in randIdx_list[i]] for i in \
+				range(len(gene_windows))]
+
+		gene_list = [gene for gene_set in genes for gene in gene_set]
+
+		num_windows = [len(windows_set) for windows_set in windows] # windows/species
+		print('concatenating...')
+		# arrange sequence data into single array
+		mat = np.concatenate(windows)
+
+		# create species labels
+		sp_labels = getLabels(num_windows)
+
+		# stratify data into training and validation data
+		allIdx = range(len(mat))
+		np.random.shuffle(allIdx)
+		trainIdx = allIdx[0:int(0.8*len(mat))]
+		valIdx = allIdx[int(0.8*len(mat)):]
+
+		train_genes = [gene_list[i] for i in trainIdx]
+		train_dat = np.array([mat[i] for i in trainIdx])
+		train_labels = np.array([sp_labels[i] for i in trainIdx])
+
+		validation_genes = [gene_list[i] for i in valIdx]
+		validation_dat = np.array([mat[i] for i in valIdx])
+		validation_labels = np.array([sp_labels[i] for i in valIdx])
+
+	else:
 		print('creating windows...')
-		gene_windows = [getallWindows(seq_dict,promoter_length,window_step) \
-			for seq_dict in new_seq_dicts]
+		gene_windows = [getallWindows(seq_dict,promoter_length,window_step,\
+			concat=False) for seq_dict in seq_dicts]
 		windows = [wind for wind,gene in gene_windows]
-		genes = [gene for wind,gene in gene_windows]
+		gene_list = [[gene for gene in sorted(seq_dict)] for seq_dict in seq_dicts]
 
-	else: # select randomly selected windows across all genes
-		print('creating windows...')
-		# get all possible windows for genes across all species
-		gene_windows = [getallWindows(seq_dict,promoter_length,window_step) \
+		min_datsize = min([len(gene_window[1]) for gene_window in gene_windows])
+		# determine number of windows per gene to select for each species
+		num_windows_per_gene = [int(float(min_datsize)/len(seq_dict.keys())) \
 			for seq_dict in seq_dicts]
 
-		# randomly choose windows, genes for all windows, genes in each species
-		# (ensure number of windows represented is the same for each species)
-		min_datsize = min([len(gene_window[1]) for gene_window in gene_windows])
-		randIdx_list = [np.random.choice(range(len(gene_window[1])), \
-				size=min_datsize,replace=False) for gene_window in gene_windows]
-		windows = [gene_windows[i][0][randIdx_list[i]] for i in \
-			range(len(gene_windows))]
-		genes = [[gene_windows[i][1][j] for j in randIdx_list[i]] for i in \
-			range(len(gene_windows))]
+		# get indices for training and validation datasets
+		allIdx = [range(window_set.shape[0]) for window_set in windows] # FIX HERE!!!!!!!!!!!!!!!!!!
+		[np.random.shuffle(inds) for inds in allIdx]
+		trainIdx = [np.array(inds[0:int(0.8*len(inds))]) for inds in allIdx]
+		valIdx = [np.array(inds[int(0.8*len(inds)):]) for inds in allIdx]
 
-	gene_list = [gene for gene_set in genes for gene in gene_set]
+		print('isolating training/validation windows...')
+		# randomly select windows for each gene (based on number of windows determined
+		# in num_windows_per_gene above)
+		train_windows = [np.concatenate(window_set[trainIdx[i],:]\
+			[:,np.random.choice(range(windows[i].shape[1]),num_windows_per_gene[i],\
+			replace=False)]) for i in range(len(windows))]
+		validation_windows = [np.concatenate(window_set[valIdx[i],:]\
+			[:,np.random.choice(range(windows[i].shape[1]),num_windows_per_gene[i],\
+			replace=False)]) for i in range(len(windows))]
 
-	num_windows = [len(windows_set) for windows_set in windows] # windows/species
-	print('concatenating...')
-	# arrange sequence data into single array
-	mat = np.concatenate(windows)
+		print('creating labels...')
+		# create species labels for training and validation data
+		num_windows_per_species_train = [window_set.shape[0] for \
+			window_set in train_windows]
+		num_windows_per_species_val = [window_set.shape[0] for \
+			window_set in validation_windows]
+		train_labels = getLabels(num_windows_per_species_train)
+		validation_labels = getLabels(num_windows_per_species_val)
 
-	# create species labels
-	sp_labels = getLabels(num_windows)
+		# aggregate training and validation data into large matrix
+		train_dat = np.concatenate(train_windows)
+		validation_dat = np.concatenate(validation_windows)
 
-	# stratify data into training and validation data
-	allIdx = range(len(mat))
-	np.random.shuffle(allIdx)
-	trainIdx = allIdx[0:int(0.8*len(mat))]
-	valIdx = allIdx[int(0.8*len(mat)):]
+		# get gene labels for training and validation data
+		train_genes = []
+		validation_genes = []
+		for i in range(len(gene_list)):
+			train_geneset = [[gene_list[i][j]]*num_windows_per_gene[i] for j in trainIdx[i]]
+			train_genes.extend([gene for gene_rep in train_geneset for gene in gene_rep])
 
-	train_genes = [gene_list[i] for i in trainIdx]
-	train_dat = np.array([mat[i] for i in trainIdx])
-	train_labels = np.array([sp_labels[i] for i in trainIdx])
-
-	validation_genes = [gene_list[i] for i in valIdx]
-	validation_dat = np.array([mat[i] for i in valIdx])
-	validation_labels = np.array([sp_labels[i] for i in valIdx])
+			val_geneset = [[gene_list[i][j]]*num_windows_per_gene[i] for j in valIdx[i]]
+			validation_genes.extend([gene for gene_rep in val_geneset for gene in gene_rep])
 
 	print('writing...')
 	dt = h5py.special_dtype(vlen=unicode)
@@ -152,17 +204,66 @@ upstream_length = 1000
 promoter_length = 500
 window_step = 20
 
-# species_list = ['sCer','cEleg','Mouse','Human']
-species_list = ['sCer','sBoul','sArb','sEub']
+species_list = ['sCer','cEleg','Mouse','Human']
+# species_list = ['sCer','sBoul','sArb','sEub']
 
 seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
 sp in species_list]
 
 # combine_species_allgenes(species_list,upstream_length,promoter_length)
-combine_species(species_list,upstream_length,promoter_length,window_step,2)
+combine_species(species_list,upstream_length,promoter_length,window_step,3)
 
 # seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
 # sp in species_list]
 
 # # read in promoter sequences and convert to one-hot encoding sequences
 # seq_dicts = [read_fasta_seq(f) for f in seq_files]
+
+# gene_windows = [getallWindows(seq_dict,promoter_length,window_step,\
+# 	concat=False) for seq_dict in seq_dicts]
+# windows = [wind for wind,gene in gene_windows]
+# gene_list = [[gene for gene in sorted(seq_dict)] for seq_dict in seq_dicts]
+
+# min_datsize = min([len(gene_window[1]) for gene_window in gene_windows])
+# # determine number of windows per gene to select for each species
+# num_windows_per_gene = [int(float(min_datsize)/len(seq_dict.keys())) \
+# 	for seq_dict in seq_dicts]
+
+# # get indices for training and validation datasets
+# allIdx = [range(window_set.shape[0]) for window_set in windows]
+# [np.random.shuffle(inds) for inds in allIdx]
+# trainIdx = [np.array(inds[0:int(0.8*len(inds))]) for inds in allIdx]
+# valIdx = [np.array(inds[int(0.8*len(inds)):]) for inds in allIdx]
+
+# print('isolating training/validation windows...')
+# # randomly select windows for each gene (based on number of windows determined
+# # in num_windows_per_gene above)
+# train_windows = [np.concatenate(windows[i][trainIdx[i],:]\
+# 	[:,np.random.choice(range(windows[i].shape[1]),num_windows_per_gene[i],\
+# 	replace=False)]) for i in range(len(windows))]
+# validation_windows = [np.concatenate(windows[i][valIdx[i],:]\
+# 	[:,np.random.choice(range(windows[i].shape[1]),num_windows_per_gene[i],\
+# 	replace=False)]) for i in range(len(windows))]
+
+# print('creating labels...')
+# # create species labels for training and validation data
+# num_windows_per_species_train = [window_set.shape[0] for \
+# 	window_set in train_windows]
+# num_windows_per_species_val = [window_set.shape[0] for \
+# 	window_set in validation_windows]
+# train_labels = getLabels(num_windows_per_species_train)
+# validation_labels = getLabels(num_windows_per_species_val)
+
+# # aggregate training and validation data into large matrix
+# train_dat = np.concatenate(train_windows)
+# validation_dat = np.concatenate(validation_windows)
+
+# # get gene labels for training and validation data
+# train_genes = []
+# validation_genes = []
+# for i in range(len(gene_list)):
+# 	train_geneset = [[gene_list[i][j]]*num_windows_per_gene[i] for j in trainIdx[i]]
+# 	train_genes.extend([gene for gene_rep in train_geneset for gene in gene_rep])
+
+# 	val_geneset = [[gene_list[i][j]]*num_windows_per_gene[i] for j in valIdx[i]]
+# 	validation_genes.extend([gene for gene_rep in val_geneset for gene in gene_rep])
