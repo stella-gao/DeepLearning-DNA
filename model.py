@@ -249,7 +249,8 @@ def getallWindows(seq_dict,window_size,step_size,concat=True):
 def multilabelWindows(seq_dicts,geneterm_dict,ontology_list,window_size,step_size):
     '''generates windows for all sequences represented in both the sequence
     dictionaries and the gene ontology dictionaries; also returns the
-    corresponding non-mutually exclusive labels to each of the windows'''
+    corresponding non-mutually exclusive labels to each of the windows and the
+    corresponding species+gene names'''
 
     # assign label index to each GO term in the ontology list
     GOinds_dict = {}
@@ -259,6 +260,7 @@ def multilabelWindows(seq_dicts,geneterm_dict,ontology_list,window_size,step_siz
 
     gene_count = 0
 
+    gene_list = []
     allWindows = []
     allLabels = []
     for species_gene_name in geneterm_dict:
@@ -270,7 +272,7 @@ def multilabelWindows(seq_dicts,geneterm_dict,ontology_list,window_size,step_siz
         if gene in seq_dicts[species] or gene.lower() in seq_dicts[species] or \
             gene.upper() in seq_dicts[species]:
 
-            # create windows
+            # create windows (match based on upper/lower case of gene name)
             if gene in seq_dicts[species]:
                 windows = slideWindow(seq_dicts[species][gene],\
                     window_size,step_size)
@@ -293,9 +295,10 @@ def multilabelWindows(seq_dicts,geneterm_dict,ontology_list,window_size,step_siz
 
             # replicate labels for all windows created for the gene/region
             allLabels.extend([label for i in range(len(windows))])
+            gene_list.extend([species_gene_name for i in range(len(windows))])
 
     print(str(gene_count) + '/' + str(len(geneterm_dict)))
-    return (np.array(allWindows),np.array(allLabels))
+    return np.array(allWindows),np.array(allLabels),gene_list
 
 
 ### PATHWAY/ONTOLOGY DATA PREPROCESSING #######################################

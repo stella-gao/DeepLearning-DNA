@@ -109,7 +109,7 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 			for seq_dict in seq_dicts]
 
 		# get indices for training and validation datasets
-		allIdx = [range(window_set.shape[0]) for window_set in windows] # FIX HERE!!!!!!!!!!!!!!!!!!
+		allIdx = [range(window_set.shape[0]) for window_set in windows]
 		[np.random.shuffle(inds) for inds in allIdx]
 		trainIdx = [np.array(inds[0:int(0.8*len(inds))]) for inds in allIdx]
 		valIdx = [np.array(inds[int(0.8*len(inds)):]) for inds in allIdx]
@@ -117,10 +117,10 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 		print('isolating training/validation windows...')
 		# randomly select windows for each gene (based on number of windows determined
 		# in num_windows_per_gene above)
-		train_windows = [np.concatenate(window_set[trainIdx[i],:]\
+		train_windows = [np.concatenate(windows[i][trainIdx[i],:]\
 			[:,np.random.choice(range(windows[i].shape[1]),num_windows_per_gene[i],\
 			replace=False)]) for i in range(len(windows))]
-		validation_windows = [np.concatenate(window_set[valIdx[i],:]\
+		validation_windows = [np.concatenate(windows[i][valIdx[i],:]\
 			[:,np.random.choice(range(windows[i].shape[1]),num_windows_per_gene[i],\
 			replace=False)]) for i in range(len(windows))]
 
@@ -130,8 +130,18 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 			window_set in train_windows]
 		num_windows_per_species_val = [window_set.shape[0] for \
 			window_set in validation_windows]
+
 		train_labels = getLabels(num_windows_per_species_train)
 		validation_labels = getLabels(num_windows_per_species_val)
+
+		# generate lists of species names
+		train_species_list = [species_list[i] for i in \
+			range(len(num_windows_per_species_train)) for j in \
+			range(num_windows_per_species_train[i])]
+
+		val_species_list = [species_list[i] for i in \
+			range(len(num_windows_per_species_val)) for j in \
+			range(num_windows_per_species_val[i])]
 
 		# aggregate training and validation data into large matrix
 		train_dat = np.concatenate(train_windows)
@@ -154,12 +164,15 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 	f.create_dataset('dnaseq',data=train_dat,dtype='f',compression='gzip')
 	f.create_dataset('labels',data=train_labels,dtype='f',compression='gzip')
 	f.create_dataset('genes',data=train_genes,dtype=dt,compression='gzip')
+	f.create_dataset('species',data=train_species_list,dtype=dt,compression='gzip')
 	f.close()
 
 	f = h5py.File('+'.join(species_list) + '.validation.h5','w')
 	f.create_dataset('dnaseq',data=validation_dat,dtype='f',compression='gzip')
 	f.create_dataset('labels',data=validation_labels,dtype='f',compression='gzip')
 	f.create_dataset('genes',data=validation_genes,dtype=dt,compression='gzip')
+	f.create_dataset('species',data=val_species_list,dtype=dt,compression='gzip')
+
 	f.close()
 
 def combine_species_allgenes(species_list,upstream_length,promoter_length):
