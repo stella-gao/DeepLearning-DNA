@@ -48,6 +48,8 @@ def combine_GOterms(species,species_list,ontology_terms,upstream_length,\
 		validation_genelist = [gene_list[i] for i in valIdx]
 
 	elif sampling_method == 2: # stratify based on species+gene terms
+
+		# isolate genes to be included in training and validation datasets
 		train_geneterms = list(np.random.choice(geneterm_dict.keys(),\
 			int(len(geneterm_dict)*0.8),replace=False))
 		validation_geneterms = [geneterm for geneterm in geneterm_dict.keys() \
@@ -58,6 +60,7 @@ def combine_GOterms(species,species_list,ontology_terms,upstream_length,\
 		val_geneterm_dict = {key:geneterm_dict[key] for key in geneterm_dict.keys() \
 			if key in validation_geneterms}
 
+		# get windows, labels, species+gene names for training, validation data
 		train_dat,train_labels,train_genelist = \
 			multilabelWindows(seq_dicts,train_geneterm_dict,\
 			ontology_terms,promoter_length,window_step)
@@ -65,6 +68,20 @@ def combine_GOterms(species,species_list,ontology_terms,upstream_length,\
 		validation_dat,validation_labels,validation_genelist = \
 			multilabelWindows(seq_dicts,val_geneterm_dict,\
 			ontology_terms,promoter_length,window_step)
+
+		# shuffle training data (to randomize batch-species pairs)
+		train_shuffleIdx = range(train_dat.shape[0])
+		np.random.shuffle(train_shuffleIdx)
+		train_dat = train_dat[np.array(train_shuffleIdx)]
+		train_labels = [train_labels[i] for i in train_shuffleIdx]
+		train_genelist = [train_genelist[i] for i in train_shuffleIdx]
+
+		# shuffle validation data (to randomize species+gene order)
+		val_shuffleIdx = range(validation_dat.shape[0])
+		np.random.shuffle(val_shuffleIdx)
+		validation_dat = train_dat[np.array(val_shuffleIdx)]
+		validation_labels = [validation_labels[i] for i in val_shuffleIdx]
+		validation_genelist = [validation_genelist[i] for i in val_shuffleIdx]
 
 	dt = h5py.special_dtype(vlen=unicode)
 

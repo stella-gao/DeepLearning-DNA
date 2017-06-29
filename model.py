@@ -42,6 +42,22 @@ def one_hot_encode_sequence(seq):
         print(seq)
     return np.array(result)
 
+def onehot2nuc(onehot_dnaseq):
+    '''converts an inputted one-hot encoded DNA sequence into its corresponding
+    nucleotide sequence (ATCG)'''
+
+    # dictionary relating nucleotide and index in one-hot encoded sequence
+    nucIdx_dict = {0: 'a', 1: 't', 2: 'c', 3:'g'}
+
+    nuc_seq = ''
+    for i in range(onehot_dnaseq.shape[1]):
+        for j in range(4):
+            if onehot_dnaseq[j][i] == 1.:
+                nuc_seq += nucIdx_dict[j]
+                break
+
+    return nuc_seq
+    
 def read_fasta_seq(file_name):
     '''reads in a file of promoter sequences in FASTA format and returns a 
     dictionary of one-hot encoded DNA sequences indexed by gene name'''
