@@ -5,6 +5,7 @@ import itertools
 import matplotlib.pyplot as plt
 
 import tensorflow as tf
+from keras.models import model_from_json
 
 ### METADATA ##################################################################
 
@@ -28,11 +29,11 @@ def write_metadata(label_set,data_dir,file_name):
 	f.close()
 	g.close()
 
-def write_metadataGO(label_set,data_dir):
+def write_metadataGO(label_set,data_dir,multiple=True):
 	'''writes metadata info (labels) to .tsv file for GO prediction - to be 
-	used in visualization in Tensorflow Projector 
-	NOTE: last element of label set should be label for examples with more
-	than one label, i.e. "both", "multiple" '''
+	used in visualization in Tensorflow Projector
+	NOTE: option to write labels as true combination of labels or as just 
+	"multiple" to delineate multi-labels'''
 
 	f = h5py.File('data/h5datasets_GO/' + data_dir + '/validation.h5','r')
 	g = open(data_dir + '_metadata.tsv','w')
@@ -41,19 +42,23 @@ def write_metadataGO(label_set,data_dir):
 	writer.writerow(['index','label'])
 	val_datsize = min(10000,f['labels'].shape[0])
 	for i in range(val_datsize):
-		metadata_Idxs = []
-		metadata_labels = []
-		# for j in range(f['labels'].shape[1]):
-		# 	if f['labels'][i][j] == 1:
-		# 		metadata_Idxs.append(str(j))
-		# 		metadata_labels.append(label_set[j])
 
-		if sum(f['labels'][i]) >= 2:
-			labelIdx = len(label_set)-1
+		if multiple:
+			if sum(f['labels'][i]) >= 2:
+				labelIdx = 'NA'
+				writer.writerow([labelIdx,'multiple'])
+			else:
+				labelIdx = list(f['labels'][i]).index(max(f['labels'][i]))
+				writer.writerow([labelIdx,label_set[labelIdx]])
+
 		else:
-			labelIdx = list(f['labels'][i]).index(max(f['labels'][i]))
-		writer.writerow([labelIdx,label_set[labelIdx]])
-		# writer.writerow(['+'.join(metadata_Idxs),'+'.join(metadata_labels)])
+			metadata_Idxs = []
+			metadata_labels = []
+			for j in range(f['labels'].shape[1]):
+				if f['labels'][i][j] == 1:
+					metadata_Idxs.append(str(j))
+					metadata_labels.append(label_set[j])
+			writer.writerow(['+'.join(metadata_Idxs),'+'.join(metadata_labels)])
 
 	f.close()
 	g.close()
@@ -153,16 +158,19 @@ def getPredictions(model_name,model_dir,testdata_file,label_names):
 
 	# load test data
 	f = h5py.File(testdata_file,'r')
-	test_dat = f['dnaseq'][:]
-	test_labels = f['labels'][:]
-	f.close()
+	test_dat = f['dnaseq'][0:10000]
+	test_labels = f['labels'][0:10000]
 
 	# run session and get output of representational layer
 	feed_dict = {dna: test_dat, labels: test_labels, dropout1: 0}
 	predictions = sess.run(preds,feed_dict)
 
-	truelabel_names = [label_names[np.argmax(label)] for label in test_labels]
+	truelabel_names = f['species'][0:10000]
+	truelabel_names = [str(i) for i in truelabel_names]
+	# truelabel_names = [label_names[np.argmax(label)] for label in test_labels]
 	prediction_names = [label_names[np.argmax(pred)] for pred in predictions]
+
+	f.close()
 
 	return predictions,confusion_matrix(truelabel_names,prediction_names)
 
@@ -293,6 +301,32 @@ def plotAttr_dnaseq(scaled_dna):
 	ax[1].bar(np.array(range(1,len(vals)+1,10))+5,vals_group)
 	plt.show()
 
+def deepliftAttrs(keras_model,dnaseq):
+	'''uses DeepLIFT to determine the attributions for an inputted one-hot
+	encoded DNA sequence'''
+
+	import deeplift
+	from deeplift.conversion import keras_conversion as kc
+
+	# predict label and identify index of label (in output)
+	predict = keras_model.predict(np.array([dnaseq]))
+	task_idx = np.argmax(predict)
+
+	deeplift_model = kc.convert_sequential_model(keras_model, \
+		nonlinear_mxts_mode=deeplift.blobs.NonlinearMxtsMode.DeepLIFT_GenomicsDefault)
+
+	find_scores_layer_idx = 0
+
+	deeplift_contribs_func = deeplift_model.get_target_contribs_func(
+		find_scores_layer_idx=find_scores_layer_idx,target_layer_idx=-2)
+
+	scores = np.array(deeplift_contribs_func(task_idx=task_idx,
+	                                         input_data_list=[dnaseq],
+	                                         batch_size=10,
+	                                         progress_update=1000))
+
+	return scores
+
 ### DIMENSIONALITY REDUCTION ##################################################
 
 def write_projection(representation_file,output_file,method='PCA'):
@@ -347,6 +381,25 @@ def GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4):
 
 	return betw_genes
 
+# json_file = open('sCer_dHansmodel.json','r')
+# loaded_model_json = json_file.read()
+# json_file.close()
+# loaded_model = model_from_json(loaded_model_json)
+# loaded_model.load_weights('sCer_dHansmodel.h5')
+
+# import deeplift.conversion.keras_conversion as kc
+
+# keras_model_weights = 'sCer_dHansmodel.h5'
+# keras_model_json = 'sCer_dHansmodel.json'
+
+# keras_model = kc.load_keras_model(weights=keras_model_weights,
+#                                   json=keras_model_json)
+
+# f = h5py.File('data/h5datasets/sCer_dHans/validation.h5','r')
+
+# a = deepliftAttrs(keras_model,f['dnaseq'][0])
+
+# f.close()
 
 representation_file = 'results/saved_models/sCer_cEleg_Mouse_Human/sCer_cEleg_Mouse_Human_val_rep.txt'
 metadata_file = 'results/saved_models/sCer_cEleg_Mouse_Human/sCer_cEleg_Mouse_Human_val_metadata.tsv'
@@ -355,12 +408,15 @@ output_file = 'all4_Mouse_Human.tsv'
 
 # filterLabels(representation_file,metadata_file,label_set,output_file)
 
-model_name = 'sCer_cEleg_Mouse_Human_model'
-model_dir = 'results/saved_models/sCer_cEleg_Mouse_Human/'
-testdata_file = 'data/h5datasets/sCer_cEleg_Mouse_Human/validation.h5'
+# model_name = 'sCer_cEleg_Mouse_Human_model'
+# model_dir = 'results/saved_models/sCer_cEleg_Mouse_Human/'
+# testdata_file = 'data/h5datasets/sCer_cEleg_Mouse_Human/validation.h5'
 
 label_names = ['sCer','cEleg','Mouse','Human']
-# a = getPredictions(model_name,model_dir,testdata_file,label_names)
+model_name = 'new2_all4_model'
+model_dir = ''
+testdata_file = 'data/h5datasets/new2_all4/validation.h5'
+a = getPredictions(model_name,model_dir,testdata_file,label_names)
 # print a[1]
 # a = get_representations(model_name,model_dir,testdata_file)
 
@@ -369,8 +425,10 @@ label_names = ['sCer','cEleg','Mouse','Human']
 # d = np.loadtxt('sCer_sPom_rep.txt',delimiter='\t')
 
 
-# write_metadata(['sCer','sBoul','sArb','sEub'],'new2_Sac4','validation.h5')
+# write_metadata(['sCer','cEleg','Mouse','Human'],'new2_all4','validation.h5')
 # write_metadataGO(['stress','cell_cycle','chromosome_org','cell_loc','kinase','pyrophos','multiple'],'sCer_stress+cell_cycle+chromosome_org+cell_loc+kinase+pyrophos')
+# write_metadataGO(['stress','cell_cycle','chr_org','multiple'],'new_sCer_stress+cc+chrorg')
+
 
 # data_file = 'results/saved_models/sCer_cEleg_Mouse_Human/blah.txt'
 # h5_file = 'data/h5datasets/sCer_cEleg_Mouse_Human/validation.h5'
@@ -378,27 +436,27 @@ label_names = ['sCer','cEleg','Mouse','Human']
 
 # a = GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4)
 
-# restore graph
-sess = tf.Session()
-saver = tf.train.import_meta_graph(model_dir + model_name + '.meta')
-saver.restore(sess,'./' + model_dir + model_name)
+# # restore graph
+# sess = tf.Session()
+# saver = tf.train.import_meta_graph(model_dir + model_name + '.meta')
+# saver.restore(sess,'./' + model_dir + model_name)
 
-f = h5py.File(testdata_file,'r')
-dnaseq = f['dnaseq'][0]
-lab = f['labels'][0]
+# f = h5py.File(testdata_file,'r')
+# dnaseq = f['dnaseq'][0]
+# lab = f['labels'][0]
 
-graph = tf.get_default_graph()
+# graph = tf.get_default_graph()
 
-# identify relevant placeholders and operations
-dna = graph.get_tensor_by_name("dna:0")
-labels = graph.get_tensor_by_name("label:0")
-dropout1 = graph.get_tensor_by_name("dropout_1/keras_learning_phase:0")
-opt = graph.get_tensor_by_name('representation/Relu:0')
-preds = graph.get_tensor_by_name('dense_1/Softmax:0')
+# # identify relevant placeholders and operations
+# dna = graph.get_tensor_by_name("dna:0")
+# labels = graph.get_tensor_by_name("label:0")
+# dropout1 = graph.get_tensor_by_name("dropout_1/keras_learning_phase:0")
+# opt = graph.get_tensor_by_name('representation/Relu:0')
+# preds = graph.get_tensor_by_name('dense_1/Softmax:0')
 
-feed_dict = {dna: dnaseq, labels: lab, dropout1: 0}
+# feed_dict = {dna: dnaseq, labels: lab, dropout1: 0}
 
-grads_attrs = gradients(sess,graph,dnaseq)
-scaled_dna = scaleAttr_dnaseq(dnaseq,grads_attrs,ptile=99)
-plotAttr_dnaseq(scaled_dna[0])
+# grads_attrs = gradients(sess,graph,dnaseq)
+# scaled_dna = scaleAttr_dnaseq(dnaseq,grads_attrs,ptile=99)
+# plotAttr_dnaseq(scaled_dna[0])
 
