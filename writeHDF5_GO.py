@@ -79,7 +79,7 @@ def combine_GOterms(species,species_list,ontology_terms,upstream_length,\
 		# shuffle validation data (to randomize species+gene order)
 		val_shuffleIdx = range(validation_dat.shape[0])
 		np.random.shuffle(val_shuffleIdx)
-		validation_dat = train_dat[np.array(val_shuffleIdx)]
+		validation_dat = validation_dat[np.array(val_shuffleIdx)]
 		validation_labels = [validation_labels[i] for i in val_shuffleIdx]
 		validation_genelist = [validation_genelist[i] for i in val_shuffleIdx]
 
