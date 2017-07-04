@@ -178,14 +178,14 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 
 	f = h5py.File('+'.join(species_list) + '.train.h5','w')
 	f.create_dataset('dnaseq',data=train_dat,dtype='f',compression='gzip')
-	f.create_dataset('labels',data=train_labels,dtype='f',compression='gzip')
+	f.create_dataset('species_labels',data=train_labels,dtype='f',compression='gzip')
 	f.create_dataset('genes',data=train_genes,dtype=dt,compression='gzip')
 	f.create_dataset('species',data=train_species_list,dtype=dt,compression='gzip')
 	f.close()
 
 	f = h5py.File('+'.join(species_list) + '.validation.h5','w')
 	f.create_dataset('dnaseq',data=validation_dat,dtype='f',compression='gzip')
-	f.create_dataset('labels',data=validation_labels,dtype='f',compression='gzip')
+	f.create_dataset('species_labels',data=validation_labels,dtype='f',compression='gzip')
 	f.create_dataset('genes',data=validation_genes,dtype=dt,compression='gzip')
 	f.create_dataset('species',data=val_species_list,dtype=dt,compression='gzip')
 
@@ -240,7 +240,7 @@ seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
 sp in species_list]
 
 # combine_species_allgenes(species_list,upstream_length,promoter_length)
-combine_species(species_list,upstream_length,promoter_length,window_step,3)
+# combine_species(species_list,upstream_length,promoter_length,window_step,3)
 
 # seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
 # sp in species_list]
@@ -248,3 +248,25 @@ combine_species(species_list,upstream_length,promoter_length,window_step,3)
 # # read in promoter sequences and convert to one-hot encoding sequences
 # seq_dicts = [read_fasta_seq(f) for f in seq_files]
 
+def rewriteHDF5(h5_file,dir_name):
+
+	f = h5py.File(dir_name + h5_file,'r')
+	g = h5py.File(dir_name + h5_file + '_new','w')
+
+	dt = h5py.special_dtype(vlen=unicode)
+
+	g.create_dataset('dnaseq',data=f['dnaseq'][:],dtype='f',compression='gzip')
+	g.create_dataset('species_label',data=f['labels'][:],dtype='f',compression='gzip')
+	g.create_dataset('genes',data=f['genes'][:],dtype=dt,compression='gzip')
+	g.create_dataset('species',data=f['species'][:],dtype=dt,compression='gzip')
+
+	f.close()
+	g.close()
+
+dir_name = 'data/h5datasets/new2_all4/'
+rewriteHDF5('train.h5',dir_name)
+rewriteHDF5('validation.h5',dir_name)
+
+dir_name = 'data/h5datasets/new2_Sac4/'
+rewriteHDF5('train.h5',dir_name)
+rewriteHDF5('validation.h5',dir_name)

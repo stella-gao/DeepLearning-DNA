@@ -375,16 +375,11 @@ def getGOterms(infile,species_list):
 
     GO_dict = {species:[] for species in species_list}
     for line in reader:
-        for species in species_list:
-            if species in line[1]:
-                GO_dict[species].append(line[2])
-
-    for species in GO_dict:
-        GO_dict[species] = list(set(GO_dict[species]))
+        [GO_dict[species].append(line[2]) for species in species_list if species in line[1]]
 
     f.close()
 
-    return GO_dict
+    return {species: list(set(GO_dict[species])) for species in GO_dict.keys()}
 
 def combineGOseq(seq_dicts,GO_dicts):
     '''integrates GO term-gene dictionaries with gene-sequence dictionaries

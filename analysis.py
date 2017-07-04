@@ -412,12 +412,12 @@ output_file = 'all4_Mouse_Human.tsv'
 # model_dir = 'results/saved_models/sCer_cEleg_Mouse_Human/'
 # testdata_file = 'data/h5datasets/sCer_cEleg_Mouse_Human/validation.h5'
 
-label_names = ['sCer','cEleg','Mouse','Human']
-model_name = 'new2_all4_model'
-model_dir = ''
-testdata_file = 'data/h5datasets/new2_all4/validation.h5'
-a = getPredictions(model_name,model_dir,testdata_file,label_names)
-# print a[1]
+# label_names = ['sCer','cEleg','Mouse','Human']
+# model_name = 'new2_all4_model'
+# model_dir = ''
+# testdata_file = 'data/h5datasets/new2_all4/validation.h5'
+# a = getPredictions(model_name,model_dir,testdata_file,label_names)
+# # print a[1]
 # a = get_representations(model_name,model_dir,testdata_file)
 
 # file_name = 'all.h5'
@@ -425,9 +425,10 @@ a = getPredictions(model_name,model_dir,testdata_file,label_names)
 # d = np.loadtxt('sCer_sPom_rep.txt',delimiter='\t')
 
 
+# write_metadata(['sCer','sBoul','sArb','sEub'],'new2_Sac4','validation.h5')
 # write_metadata(['sCer','cEleg','Mouse','Human'],'new2_all4','validation.h5')
-# write_metadataGO(['stress','cell_cycle','chromosome_org','cell_loc','kinase','pyrophos','multiple'],'sCer_stress+cell_cycle+chromosome_org+cell_loc+kinase+pyrophos')
-# write_metadataGO(['stress','cell_cycle','chr_org','multiple'],'new_sCer_stress+cc+chrorg')
+# write_metadataGO(['stress','cell_cycle','chromosome_org','cell_loc','kinase','pyrophos','multiple'],'new_sCer_6GO')
+write_metadataGO(['stress','cc','chr_org','multiple'],'new_sCer_stress+cc+chrorg')
 
 
 # data_file = 'results/saved_models/sCer_cEleg_Mouse_Human/blah.txt'

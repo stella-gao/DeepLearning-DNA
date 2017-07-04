@@ -23,10 +23,11 @@ sys.path.append('/home/ue4/tfvenv/lib/python2.7/site-packages/')
 import pdb, traceback, sys
 import tensorflow as tf
 import numpy as np
-from keras.layers import Input, Dense, Lambda, Conv2D, concatenate, Reshape, AveragePooling2D, Flatten, BatchNormalization, MaxPooling2D
+from keras.layers import Input, Dense, Lambda, Conv2D, concatenate, Reshape, AveragePooling2D, Flatten, BatchNormalization, MaxPooling2D, Dropout
 from keras.models import Model
 from keras import backend as K
-from keras.objectives import kullback_leibler_divergence, categorical_crossentropy
+from keras.metrics import categorical_accuracy, binary_accuracy
+from keras.objectives import kullback_leibler_divergence, categorical_crossentropy, binary_crossentropy
 import json, six, copy, os
 from visualization import put_kernels_on_grid, plot_prediction
 
@@ -152,7 +153,6 @@ class Integrator(object):
         self.tracks = {}  # initializes dictionary of key = input track, value = CNN Container
         self.inputs = {}  # initializes input dictionary of key = input track, value = inputs to corresponding CNN Container
 
-        
         self.router = Router() # router object gathers the representations from encoders (prev. known as 
         # Convolutional Containers), then provides selected ones to the prediction decoders, 
         # (previously, known as Decoder)
@@ -169,16 +169,35 @@ class Integrator(object):
         self.decoders = {}
         for track_name in self.architecture['Outputs']:
             with tf.variable_scope(track_name):
-                self.decoders[track_name] = Decoder2(architecture=self.architecture,
-                                                    dropout=self.dropout,
-                                                    keep_prob_input=self.keep_prob_input,
-                                                    inp_size=self.inp_size,
-                                                    batch_norm=batch_norm,
-                                                    strand=self.config['Options']['Strand'],
-                                                    name=track_name)
+
+                if 'label' not in track_name:
+                    self.decoders[track_name] = Decoder(architecture=self.architecture,
+                                                        dropout=self.dropout,
+                                                        keep_prob_input=self.keep_prob_input,
+                                                        inp_size=self.inp_size,
+                                                        batch_norm=batch_norm,
+                                                        strand=self.config['Options']['Strand'],
+                                                        name=track_name)
+                elif track_name == 'species_labels':
+                    self.decoders[track_name] = Decoder2(architecture=self.architecture,
+                                                        dropout=self.dropout,
+                                                        keep_prob_input=self.keep_prob_input,
+                                                        inp_size=self.inp_size,
+                                                        batch_norm=batch_norm,
+                                                        strand=self.config['Options']['Strand'],
+                                                        name=track_name)
+
+                elif track_name == 'GO_labels':
+                    self.decoders[track_name] = Decoder3(architecture=self.architecture,
+                                                        dropout=self.dropout,
+                                                        keep_prob_input=self.keep_prob_input,
+                                                        inp_size=self.inp_size,
+                                                        batch_norm=batch_norm,
+                                                        strand=self.config['Options']['Strand'],
+                                                        name=track_name)
+
                 self.decoders[track_name].representations = self.router.route(block_list=[track_name])
                 self.decoders[track_name].combine_representations() # combines representations into convolutional layer
-
 
 
         # define Integrator attributes
@@ -192,9 +211,8 @@ class Integrator(object):
                 output_width = self.architecture['Modules'][key]["output_width"]
                 self.outputs[key] = tf.placeholder(tf.float32, [None, output_width], name = 'output_' + key)
                 self.output_tensor[key] = self.outputs[key]
-                if key == 'labels': ############## CHANGE THIS ONCE LABELS ARE RENAMED IN HDF5 FILES
+                if key == 'species_labels':
                     self.cost_functions[key] = catCrossEntropy 
-                    print('hello!!!!!!\n\n')
                 elif key == 'GO_labels':
                     self.cost_functions[key] = binCrossEntropy
             else:
@@ -230,6 +248,7 @@ class Integrator(object):
         # define Integrator attributes
         if 'Inputs' in architecture_template.keys():
             self.architecture = architecture_template
+
         else:
             self.architecture = {'Modules': {}, 'Scaffold': {}}
             self.architecture['Scaffold'] = architecture_template['Scaffold']
@@ -239,9 +258,9 @@ class Integrator(object):
             for key in self.architecture['Inputs'] + self.architecture['Outputs']:
                 if 'labels' in key:
                     self.architecture['Modules'][key] = {'output_width': self.config['Tracks'][key]['output_width']}
-                    # self.architecture['Modules'][key]['output_width'] = self.config['Tracks'][key]['output_width']
 
                 else:
+
                     self.architecture['Modules'][key] = copy.deepcopy(architecture_template['Modules'])
                     self.architecture['Modules'][key]['input_height'] = self.config['Tracks'][key]['input_height']
                     self.architecture['Modules'][key]['Layer1']['filter_height'] = self.config['Tracks'][key]['input_height']
@@ -325,10 +344,20 @@ class Integrator(object):
             TRAIN_FETCHES.update({key + '_loss': self.losses[key]})
             VALIDATION_FETCHES.update({key + '_loss': self.losses[key]})
             self.cost += self.losses[key]
-            # determine % accuracy of sequencing peak recalls
-            # self.accuracy[key] = average_peak_distance(self.output_tensor[key], self.decoders[key].prediction)
-            # TRAIN_FETCHES.update({key+ '_average_peak_distance': self.accuracy[key]})
-            # VALIDATION_FETCHES.update({key+ 'Average_peak_distance': self.accuracy[key]})
+
+            # determine % accuracy of label predictions or sequencing peak recalls
+            if key == 'species_labels':
+                self.accuracy[key] = tf.reduce_mean(categorical_accuracy(self.output_tensor[key],self.decoders[key].prediction))
+                TRAIN_FETCHES.update({key+'_categ_accuracy': self.accuracy[key]})
+                VALIDATION_FETCHES.update({key+'_categ_accuracy': self.accuracy[key]})
+            elif key == 'GO_labels':
+                self.accuracy[key] = tf.reduce_mean(binary_accuracy(self.output_tensor[key],self.decoders[key].prediction))
+                TRAIN_FETCHES.update({key+'_bin_accuracy': self.accuracy[key]})
+                VALIDATION_FETCHES.update({key+'_bin_accuracy': self.accuracy[key]})
+            else:
+                self.accuracy[key] = average_peak_distance(self.output_tensor[key], self.decoders[key].prediction)
+                TRAIN_FETCHES.update({key+ '_average_peak_distance': self.accuracy[key]})
+                VALIDATION_FETCHES.update({key+ '_average_peak_distance': self.accuracy[key]})
 
             # self.performance[key] = self.performance_measures[key](self.output_tensor[key], self.decoders[key].prediction)
             trnbls = [var for var in self.trainables if ((key in var.name)&('decoder' in var.name))|('encoder' in var.name)]
@@ -337,9 +366,11 @@ class Integrator(object):
                 minimize(self.cost,
                          global_step=self.global_step,
                          var_list=trnbls)
+
             TRAIN_FETCHES.update({key+'_': self.optimizer[key]})
 
         TRAIN_FETCHES.update({'cost': self.cost})
+
         VALIDATION_FETCHES.update({'cost': self.cost})
 
 
@@ -762,7 +793,7 @@ class Decoder2():
         """Concatenates representation tensors """
 
         self.decoder_height = len(self.representations)
-        self.decoder_width = self.architecture['Modules'].values()[0]['representation_width']
+        self.decoder_width = self.architecture['Modules']['dnaseq']['representation_width']
         repr_list = []
         activation_type = None
 
@@ -802,6 +833,9 @@ class Decoder2():
         if self.batch_norm:
             net = BatchNormalization()(net)
 
+        # apply dropout
+        net = Dropout(0.5)(net)
+
         # flatten and apply activation( input * kernel + bias )
         net = Flatten()(net)
         represenWidth = self.architecture['Scaffold']['representation_width']
@@ -823,6 +857,95 @@ class Decoder2():
 
         self.prediction = tf.nn.softmax(net, name = 'softmax')
 
+class Decoder3():
+
+    def __init__(self, architecture, dropout=1.,
+                 keep_prob_input=None,
+                 inp_size=None,
+                 batch_norm=False,
+                 strand='Single',
+                 unified=True,
+                 name=None):
+
+        self.architecture = architecture
+        self.dropout = dropout
+        self.keep_prob_input = keep_prob_input
+        self.inp_size = inp_size
+        self.batch_norm = batch_norm
+        self.strand = strand
+        self.unified = unified
+        self.representations = {}
+        self.scope = name
+
+
+
+    def combine_representations(self):
+        """Concatenates representation tensors """
+
+        self.decoder_height = len(self.representations)
+        self.decoder_width = self.architecture['Modules']['dnaseq']['representation_width']
+        repr_list = []
+        activation_type = None
+
+        with tf.variable_scope('decoder'):
+            ix = 0
+            ix_dict = {}
+            for track_name, val in self.representations.items():
+                ix_dict[track_name] = ix
+                repr_list.append(val)
+                ix += 1
+            self.combined_representation = tf.reshape(tf.concat(repr_list, 1), shape = [-1, self.decoder_height, self.decoder_width, 1])
+            self._encapsulate_models()
+
+    def _encapsulate_models(self):
+        """Semi private continuation of combine_representation method"""
+            # Modality-wise dropout
+            # net = tf.nn.dropout(tf.identity(self.combined_representation), self.keep_prob_input, noise_shape = [self.inp_size, self.decoder_height, 1, 1])
+        net = tf.identity(self.combined_representation)
+        if self.unified:
+            conv_height = 1
+            net = tf.reduce_sum(net, 1, keep_dims = True)
+        else:
+            conv_height = self.decoder_height
+
+        # 2 dimensional convolutional operation
+        numFilt = self.architecture['Scaffold']['Layer1']['number_of_filters']
+        filterShape = [conv_height, self.architecture['Scaffold']['Layer1']['filter_width']]
+        actFunc = self.architecture['Scaffold']['Layer1']['activation']
+        net = Conv2D(numFilt, filterShape, activation = actFunc, kernel_regularizer = 'l2', padding = 'valid', name = 'conv_combined')(net)
+
+        # 2 dimensional average pooling operation
+        poolSize = self.architecture['Scaffold']['Layer1']['pool_size']
+        poolStrides = [1, self.architecture['Scaffold']['Layer1']['pool_stride']]
+        net = AveragePooling2D([1, poolSize], strides = poolStrides, padding = 'valid', name = 'AvgPool_combined')(net)
+
+        # apply batch normalization if true
+        if self.batch_norm:
+            net = BatchNormalization()(net)
+ 
+        # apply dropout
+        net = Dropout(0.5)(net)
+
+        # flatten and apply activation( input * kernel + bias )
+        net = Flatten()(net)
+        represenWidth = self.architecture['Scaffold']['representation_width']
+        self.decoder_representation = Dense(represenWidth, activation = 'linear', name = 'representation')(net)
+
+        # apply fully connected layer and softmax
+
+        outWidth = self.architecture['Modules'][self.scope]['output_width']
+
+        # define fully connected layer
+        if (self.strand == 'Single'):
+            net = Dense(outWidth, activation = 'linear', name = 'final_FC')(self.decoder_representation)
+        elif (self.strand == 'Double'):
+            inpHeight = self.architecture['Modules'][self.scope]['input_height']
+            net = Dense(inpHeight*outWidth, activation = 'linear', name = 'final_FC')(self.decoder_representation)
+        else:
+            #TODO: perhaps raise ConfigurationParsingError earlier in main.py?
+            raise ConfigurationParsingError('Configuration file should have Strand field as either Single or Double')
+
+        self.prediction = tf.nn.sigmoid(net, name = 'sigmoid')
 
 class Router(object):
     def __init__(self):

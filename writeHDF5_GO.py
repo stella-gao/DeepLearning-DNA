@@ -87,22 +87,44 @@ def combine_GOterms(species,species_list,ontology_terms,upstream_length,\
 
 	f = h5py.File(str(species[0]) + '+'.join(ontology_terms) + '.train.h5','w')
 	f.create_dataset('dnaseq',data=train_dat,dtype='f',compression='gzip')
-	f.create_dataset('labels',data=train_labels,dtype='f',compression='gzip')
+	f.create_dataset('GO_labels',data=train_labels,dtype='f',compression='gzip')
 	f.create_dataset('genes',data=train_genelist,dtype=dt,compression='gzip')
 	f.close()
 
 	f = h5py.File(str(species[0]) + '+'.join(ontology_terms) + '.validation.h5','w')
 	f.create_dataset('dnaseq',data=validation_dat,dtype='f',compression='gzip')
-	f.create_dataset('labels',data=validation_labels,dtype='f',compression='gzip')
+	f.create_dataset('GO_labels',data=validation_labels,dtype='f',compression='gzip')
 	f.create_dataset('genes',data=validation_genelist,dtype=dt,compression='gzip')
 	f.close()
 
-ontology_terms = ['stress','cell_cycle','chromosome_org'] #,'cell_loc','kinase','pyrophos']
+# ontology_terms = ['stress','cell_cycle','chromosome_org'] #,'cell_loc','kinase','pyrophos']
 
-combine_GOterms(species,species_list,ontology_terms,upstream_length,\
-		promoter_length,window_step,2)
+# combine_GOterms(species,species_list,ontology_terms,upstream_length,\
+# 		promoter_length,window_step,2)
 
-ontology_terms = ['stress','cell_cycle','chromosome_org','cell_loc','kinase','pyrophos']
+# ontology_terms = ['stress','cell_cycle','chromosome_org','cell_loc','kinase','pyrophos']
 
-combine_GOterms(species,species_list,ontology_terms,upstream_length,\
-		promoter_length,window_step,2)
+# combine_GOterms(species,species_list,ontology_terms,upstream_length,\
+# 		promoter_length,window_step,2)
+
+def rewriteHDF5_GO(h5_file,dir_name):
+
+	f = h5py.File(dir_name + h5_file,'r')
+	g = h5py.File(dir_name + h5_file + '_new','w')
+
+	dt = h5py.special_dtype(vlen=unicode)
+
+	g.create_dataset('dnaseq',data=f['dnaseq'][:],dtype='f',compression='gzip')
+	g.create_dataset('GO_label',data=f['labels'][:],dtype='f',compression='gzip')
+	g.create_dataset('genes',data=f['genes'][:],dtype=dt,compression='gzip')
+
+	f.close()
+	g.close()
+
+dir_name = 'data/h5datasets_GO/new_sCer_6GO/'
+rewriteHDF5_GO('train.h5',dir_name)
+rewriteHDF5_GO('validation.h5',dir_name)
+
+dir_name = 'data/h5datasets_GO/new_sCer_stress+cc+chrorg/'
+rewriteHDF5_GO('train.h5',dir_name)
+rewriteHDF5_GO('validation.h5',dir_name)

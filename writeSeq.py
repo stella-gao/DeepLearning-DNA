@@ -10,7 +10,7 @@ def read_gtf(gtf_file):
         reader = csv.reader(f,delimiter='\t')
 
         annot_dict = {}
-        a = []
+
         for line in reader:
             if len(line) > 2:
                 if line[2] == 'gene':
