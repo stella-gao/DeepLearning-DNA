@@ -22,24 +22,20 @@ def one_hot_encode_sequence(seq):
     '''converts a DNA sequence into its corresponding one-hot encoding 
     representation'''
 
-    seq = [x.lower() for x in seq]
+    seq = seq.lower()
 
-    result = [[],[],[],[]]
+    result = [[np.array([0.]) for i in range(len(seq))] for i in range(4)]
 
     bps = ['a','t','c','g']
     for i in range(len(seq)):
         if seq[i] == 'n':
-            for j in range(len(bps)):
-                result[j].append(np.array([0.25]))
+            for j in range(4):
+                result[j][i] = np.array([0.25])
         else:
-            for j in range(len(bps)):
-                if seq[i] == bps[j]:
-                    result[j].append(np.array([1.]))
-                else:
-                    result[j].append(np.array([0.]))
+            result[bps.index(seq[i])][i] = np.array([1.])
+
     result = [np.array(x) for x in result]
-    if len(result[0]) < 50:
-        print(seq)
+
     return np.array(result)
 
 def onehot2nuc(onehot_dnaseq):
@@ -74,8 +70,8 @@ def read_fasta_seq(file_name):
             if len(line) > 1:
                 # one hot encode completed sequence if sufficiently low 
                 # number of "N"
-                if seq.count('N') <= 0.1*len(seq) and len(seq) > 0:
-                    seq_dict[gene_name] = one_hot_encode_sequence(seq)
+                if seq.count('N') <= 0.2*len(seq) and len(seq) > 0:
+                    seq_dict[gene_name.lower()] = one_hot_encode_sequence(seq)
 
                 # read in header of new sequence
                 gene_name = line[1]
@@ -95,20 +91,18 @@ def read_gtf(gtf_file):
         reader = csv.reader(f,delimiter='\t')
 
         annot_dict = {}
-        a = []
         for line in reader:
             if len(line) > 2:
                 if line[2] == 'gene':
                     annot = line[8].split(';')[1]
-                    if 'gene_name' in annot:
-                        chrno = 'chr'+line[0]
-                        if chrno not in annot_dict:
-                            annot_dict[chrno] = {}
-                        gene = annot.split('"')[1]
-                        annot_dict[chrno][gene] = {}                    
-                        annot_dict[chrno][gene]['start'] = int(line[3])
-                        annot_dict[chrno][gene]['end'] = int(line[4])
-                        annot_dict[chrno][gene]['strand'] = line[6]
+                    chrno = 'chr'+line[0]
+                    if chrno not in annot_dict:
+                        annot_dict[chrno] = {}
+                    gene = annot.split('"')[1]
+                    annot_dict[chrno][gene] = {}                    
+                    annot_dict[chrno][gene]['start'] = int(line[3])
+                    annot_dict[chrno][gene]['end'] = int(line[4])
+                    annot_dict[chrno][gene]['strand'] = line[6]
                                         
     return annot_dict
 
@@ -269,10 +263,10 @@ def multilabelWindows(seq_dicts,geneterm_dict,ontology_list,window_size,step_siz
     corresponding species+gene names'''
 
     # assign label index to each GO term in the ontology list
-    GOinds_dict = {}
-    for i in range(len(ontology_list)):
-        GOterm = ontology_list[i]
-        GOinds_dict[GOterm] = i
+    # GOinds_dict = {}
+    # for i in range(len(ontology_list)):
+    #     GOterm = ontology_list[i]
+    #     GOinds_dict[GOterm] = i
 
     gene_count = 0
 
@@ -307,11 +301,13 @@ def multilabelWindows(seq_dicts,geneterm_dict,ontology_list,window_size,step_siz
             # create labels for all windows
             label = np.zeros(len(ontology_list),dtype=np.float32)
             for GOterm in geneterm_dict[species_gene_name]:
-                label[GOinds_dict[GOterm]] = 1.
+                label[ontology_list.index(GOterm)] = 1.
 
             # replicate labels for all windows created for the gene/region
             allLabels.extend([label for i in range(len(windows))])
             gene_list.extend([species_gene_name for i in range(len(windows))])
+        # else:
+        #     print(gene)
 
     print(str(gene_count) + '/' + str(len(geneterm_dict)))
     return np.array(allWindows),np.array(allLabels),gene_list
@@ -375,7 +371,8 @@ def getGOterms(infile,species_list):
 
     GO_dict = {species:[] for species in species_list}
     for line in reader:
-        [GO_dict[species].append(line[2]) for species in species_list if species in line[1]]
+        [GO_dict[species].append(line[2]) for species in species_list \
+            if species in line[1]]
 
     f.close()
 

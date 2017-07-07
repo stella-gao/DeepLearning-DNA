@@ -50,7 +50,7 @@ train_batcher = train_data.batcher()
 validation_file = h5py.File(validation_h5file,'r')
 val_datsize = min(10000,validation_file.values()[0].shape[0])
 validation_dat = validation_file['dnaseq'][0:val_datsize]
-validation_labels = validation_file['labels'][0:val_datsize]
+validation_labels = validation_file['species_labels'][0:val_datsize]
 
 # create CallBack Tensorboard object
 tbCallBack = callbacks.TensorBoard(log_dir='./blah', histogram_freq=0, \
@@ -84,7 +84,7 @@ preds = Dense(num_species,activation='softmax')(FC)
 loss = tf.reduce_mean(categorical_crossentropy(labels, preds))
 
 # gradient descent optimizer (Adam)
-train_step = tf.train.AdamOptimizer(learning_rate=learning_rate). \
+train_step = tf.train.AdamOptimizer(learning_rate=learning_rate). \t
                 minimize(loss)
 
 # internal accuracy
@@ -109,7 +109,7 @@ with sess.as_default():
     for i in range(totalIterations):
         batch = train_batcher.next()
         sess.run([train_step],feed_dict={dna: batch['dnaseq'], \
-            labels: batch['labels'], K.learning_phase(): 1})
+            labels: batch['species_labels'], K.learning_phase(): 1})
 
         # log training and validation accuracy
         if i%1000 == 0:
@@ -117,7 +117,7 @@ with sess.as_default():
             epoch_num = i/train_size*batch_size
 
             acc_val, loss_val = sess.run([accuracy,loss],feed_dict={dna: batch['dnaseq'], \
-                labels: batch['labels'], K.learning_phase(): 0})
+                labels: batch['species_labels'], K.learning_phase(): 0})
 
             val_acc_val = sess.run(accuracy,feed_dict={dna: validation_dat, \
                 labels: validation_labels, K.learning_phase(): 0})

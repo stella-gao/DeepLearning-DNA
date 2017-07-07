@@ -2,9 +2,9 @@ import h5py
 import numpy as np
 from model import *
 
-species = ['sCer'] #,'cEleg']
-species_list = ['cerevisiae'] #,'elegans']
-ontology_terms = ['stress','cell_cycle','chromosome_org'] #,'cell_loc','kinase','pyrophos']
+species = ['sCer','cEleg','Mouse','Human']
+species_list = ['cerevisiae','elegans','musculus','sapiens']
+ontology_terms = ['stress','cell_cycle','chromosome_org','cell_loc','kinase','pyrophos']
 
 upstream_length = 1000
 promoter_length = 500
@@ -97,15 +97,15 @@ def combine_GOterms(species,species_list,ontology_terms,upstream_length,\
 	f.create_dataset('genes',data=validation_genelist,dtype=dt,compression='gzip')
 	f.close()
 
-# ontology_terms = ['stress','cell_cycle','chromosome_org'] #,'cell_loc','kinase','pyrophos']
+ontology_terms = ['stress','cell_cycle','chromosome_org'] #,'cell_loc','kinase','pyrophos']
 
-# combine_GOterms(species,species_list,ontology_terms,upstream_length,\
-# 		promoter_length,window_step,2)
+combine_GOterms(species,species_list,ontology_terms,upstream_length,\
+		promoter_length,window_step,2)
 
-# ontology_terms = ['stress','cell_cycle','chromosome_org','cell_loc','kinase','pyrophos']
+ontology_terms = ['stress','cell_cycle','chromosome_org','cell_loc','kinase','pyrophos']
 
-# combine_GOterms(species,species_list,ontology_terms,upstream_length,\
-# 		promoter_length,window_step,2)
+combine_GOterms(species,species_list,ontology_terms,upstream_length,\
+		promoter_length,window_step,2)
 
 def rewriteHDF5_GO(h5_file,dir_name):
 
@@ -121,10 +121,10 @@ def rewriteHDF5_GO(h5_file,dir_name):
 	f.close()
 	g.close()
 
-dir_name = 'data/h5datasets_GO/new_sCer_6GO/'
-rewriteHDF5_GO('train.h5',dir_name)
-rewriteHDF5_GO('validation.h5',dir_name)
+# dir_name = 'data/h5datasets_GO/new_sCer_6GO/'
+# rewriteHDF5_GO('train.h5',dir_name)
+# rewriteHDF5_GO('validation.h5',dir_name)
 
-dir_name = 'data/h5datasets_GO/new_sCer_stress+cc+chrorg/'
-rewriteHDF5_GO('train.h5',dir_name)
-rewriteHDF5_GO('validation.h5',dir_name)
+# dir_name = 'data/h5datasets_GO/new_sCer_stress+cc+chrorg/'
+# rewriteHDF5_GO('train.h5',dir_name)
+# rewriteHDF5_GO('validation.h5',dir_name)
