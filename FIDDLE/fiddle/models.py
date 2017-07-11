@@ -140,7 +140,7 @@ class Integrator(object):
         """
 
         print('Sanity check for configurations.json "Options": "Strand":', config['Options']['Strand'])
-
+        print(architecture_path)
         # define Integrator attributes
         self.config = config # copy in byteify-ied configurations.json file
         self.model_path = model_path # copy in directory destination for saved model
@@ -160,7 +160,8 @@ class Integrator(object):
         # stack representations of inputs into unified representation
         for track_name in self.architecture['Inputs']:
             with tf.variable_scope(track_name):
-                self.tracks[track_name] = Encoder(track_name, self.architecture)
+                if track_name == "dnaseq":
+                    self.tracks[track_name] = Encoder3(track_name, self.architecture) ################### changed to Encoder2
             self.inputs[track_name] = self.tracks[track_name].input
             self.router.stack_input(self.tracks[track_name].representation, track_name) 
 
@@ -335,6 +336,8 @@ class Integrator(object):
         self.accuracy = {}
         self.losses = {}
         self.cost = 0
+        
+        self.exact_match = {}
         self.optimizer = {}
         # define Integrator cost and loss
         for key in self.architecture['Outputs']:
@@ -352,8 +355,10 @@ class Integrator(object):
                 VALIDATION_FETCHES.update({key+'_categ_accuracy': self.accuracy[key]})
             elif key == 'GO_labels':
                 self.accuracy[key] = tf.reduce_mean(binary_accuracy(self.output_tensor[key],self.decoders[key].prediction))
-                TRAIN_FETCHES.update({key+'_bin_accuracy': self.accuracy[key]})
-                VALIDATION_FETCHES.update({key+'_bin_accuracy': self.accuracy[key]})
+                self.exact_match[key] = tf.reduce_mean(exact_match_accuracy(self.output_tensor[key],self.decoders[key].prediction,\
+                    self.architecture['Modules'][key]['output_width']))
+                TRAIN_FETCHES.update({key+'_bin_accuracy': self.accuracy[key], key+'_exact_match_accuracy': self.exact_match[key]})
+                VALIDATION_FETCHES.update({key+'_bin_accuracy': self.accuracy[key], key+'_exact_match_accuracy': self.exact_match[key]})
             else:
                 self.accuracy[key] = average_peak_distance(self.output_tensor[key], self.decoders[key].prediction)
                 TRAIN_FETCHES.update({key+ '_average_peak_distance': self.accuracy[key]})
@@ -361,6 +366,7 @@ class Integrator(object):
 
             # self.performance[key] = self.performance_measures[key](self.output_tensor[key], self.decoders[key].prediction)
             trnbls = [var for var in self.trainables if ((key in var.name)&('decoder' in var.name))|('encoder' in var.name)]
+
             # define Integrator gradient optimizer
             self.optimizer[key] = tf.train.AdamOptimizer(learning_rate=self.learning_rate). \
                 minimize(self.cost,
@@ -398,7 +404,6 @@ class Integrator(object):
             train_feed = {self.outputs[key]: train_data[key] for key in self.architecture['Outputs']}
             train_feed.update({self.inputs[key]: train_data[key] for key in self.architecture['Inputs']})
 
-
         train_feed.update({
             self.dropout: self.architecture['Scaffold']['dropout'],
             self.keep_prob_input: (1 - inp_dropout),
@@ -407,6 +412,7 @@ class Integrator(object):
 
         TRAIN_FETCHES.update({'summary': self.summary_op})
         return_dict = self._run(TRAIN_FETCHES, train_feed)
+
         return return_dict
 
     def validate(self, validation_data, accuracy = None):
@@ -454,6 +460,10 @@ class Integrator(object):
         })
 
         PREDICTION_FETCHES.update({key: self.decoders[key].prediction for key in self.decoders.keys()})
+
+        # confusion matrix for categorical classification
+        pred_feed.update({})
+
         return_dict = self._run(PREDICTION_FETCHES, pred_feed)
         return return_dict
 
@@ -545,7 +555,6 @@ class Integrator(object):
         fetches -- A list or dict of ops to fetch.
         feed_dict -- The dict of values to feed to the computation graph.
         """
-
         if isinstance(fetches, dict):
             keys, values = fetches.keys(), list(fetches.values())
             res = self.sess.run(values, feed_dict)
@@ -679,6 +688,208 @@ class Encoder(BaseTrackContainer):
                 self.architecture['Modules'][self.track_name][
                     'representation_width'],
                 name='representation')(net)
+
+class Encoder2(BaseTrackContainer): # include dilated convolution
+    '''Previously known as ConvolutionalContainer'''
+
+    def __init__(self, track_name, architecture, batch_norm=False):
+        BaseTrackContainer.__init__(self, track_name)
+        self.track_name = track_name
+        self.architecture = architecture
+        self.batch_norm = batch_norm
+
+        self.input = tf.placeholder(
+            tf.float32, [
+                None,
+                self.architecture['Modules'][self.track_name]["input_height"],
+                self.architecture['Modules'][self.track_name]["input_width"], 1
+            ],
+            name=self.track_name + '_input')
+        self._build()
+
+    def _build(self):
+        with tf.variable_scope('encoder'):
+            net = Conv2D(
+                self.architecture['Modules'][self.track_name]['Layer1']
+                ['number_of_filters'], [
+                    self.architecture['Modules'][self.track_name]['Layer1'][
+                        'filter_height'], self.architecture['Modules'][
+                            self.track_name]['Layer1']['filter_width']
+                ],
+                activation=self.architecture['Modules'][self.track_name][
+                    'Layer1']['activation'],
+                kernel_regularizer='l2',
+                dilation_rate=(1,2),
+                padding='valid',
+                name='conv_1')(self.input)
+            net = AveragePooling2D(
+                (1, self.architecture['Modules'][self.track_name]['Layer1'][
+                    'pool_size']),
+                strides=(1, self.architecture['Modules'][self.track_name][
+                    'Layer1']['pool_stride']))(net)
+            if self.batch_norm:
+                net = BatchNormalization()(net)
+            # apply dropout
+            net = Dropout(0.5)(net)
+
+            net = Conv2D(
+                self.architecture['Modules'][self.track_name]['Layer2']
+                ['number_of_filters'], [
+                    self.architecture['Modules'][self.track_name]['Layer2'][
+                        'filter_height'], self.architecture['Modules'][
+                            self.track_name]['Layer2']['filter_width']
+                ],
+                activation=self.architecture['Modules'][self.track_name][
+                    'Layer2']['activation'],
+                kernel_regularizer='l2',
+                padding='valid',
+                name='conv_2')(net)
+
+            net = AveragePooling2D(
+                [
+                    1, self.architecture['Modules'][self.track_name]['Layer2'][
+                        'pool_size']
+                ],
+                strides=[
+                    1, self.architecture['Modules'][self.track_name]['Layer2'][
+                        'pool_stride']
+                ],
+                padding='valid',
+                name='AvgPool_2')(net)
+            if self.batch_norm:
+                net = BatchNormalization()(net)
+            # apply dropout
+            net = Dropout(0.5)(net)
+            net = Flatten()(net)
+            self.representation = Dense(
+                self.architecture['Modules'][self.track_name][
+                    'representation_width'],
+                name='representation')(net)
+
+class Encoder3(BaseTrackContainer):
+    '''Previously known as ConvolutionalContainer'''
+
+    def __init__(self, track_name, architecture, batch_norm=False):
+        BaseTrackContainer.__init__(self, track_name)
+        self.track_name = track_name
+        self.architecture = architecture
+        self.batch_norm = batch_norm
+
+        self.input = tf.placeholder(
+            tf.float32, [
+                None,
+                self.architecture['Modules'][self.track_name]["input_height"],
+                self.architecture['Modules'][self.track_name]["input_width"], 1
+            ],
+            name=self.track_name + '_input')
+        self._build()
+
+    def _build(self):
+        with tf.variable_scope('encoder'):
+            net = Conv2D(
+                self.architecture['Modules'][self.track_name]['Layer1']
+                ['number_of_filters'], [
+                    self.architecture['Modules'][self.track_name]['Layer1'][
+                        'filter_height'], self.architecture['Modules'][
+                            self.track_name]['Layer1']['filter_width']
+                ],
+                activation=self.architecture['Modules'][self.track_name][
+                    'Layer1']['activation'],
+                kernel_regularizer='l2',
+                dilation_rate=(1,1),
+                padding='valid',
+                name='conv_1')(self.input)
+
+            net1 = AveragePooling2D(
+                (1, self.architecture['Modules'][self.track_name]['Layer1'][
+                    'pool_size']),
+                strides=(1, self.architecture['Modules'][self.track_name][
+                    'Layer1']['pool_stride']))(net)
+            if self.batch_norm:
+                net = BatchNormalization()(net1)
+            # apply dropout
+            net1 = Dropout(0.5)(net1)
+
+            net1 = Conv2D(
+                self.architecture['Modules'][self.track_name]['Layer2']
+                ['number_of_filters'], [
+                    self.architecture['Modules'][self.track_name]['Layer2'][
+                        'filter_height'], self.architecture['Modules'][
+                            self.track_name]['Layer2']['filter_width']
+                ],
+                activation=self.architecture['Modules'][self.track_name][
+                    'Layer2']['activation'],
+                kernel_regularizer='l2',
+                padding='valid',
+                name='conv_2')(net1)
+
+            net1 = AveragePooling2D(
+                [
+                    1, self.architecture['Modules'][self.track_name]['Layer2'][
+                        'pool_size']
+                ],
+                strides=[
+                    1, self.architecture['Modules'][self.track_name]['Layer2'][
+                        'pool_stride']
+                ],
+                padding='valid',
+                name='AvgPool_2')(net1)
+            if self.batch_norm:
+                net1 = BatchNormalization()(net1)
+            # apply dropout
+            net1 = Dropout(0.5)(net)
+            net1 = Flatten()(net)
+            net1 = Dense(
+                self.architecture['Modules'][self.track_name][
+                    'representation_width'])(net1)
+
+            ###################################################################
+            # second branch in network to deal with dilated convolution
+            ###################################################################
+
+            net2 = Conv2D(
+                self.architecture['Modules'][self.track_name]['Layer1']
+                ['number_of_filters'], [
+                    self.architecture['Modules'][self.track_name]['Layer1'][
+                        'filter_height'], self.architecture['Modules'][
+                            self.track_name]['Layer1']['filter_width']
+                ],
+                activation=self.architecture['Modules'][self.track_name][
+                    'Layer1']['activation'],
+                kernel_regularizer='l2',
+                dilation_rate=(1,2),
+                padding='valid',
+                name='conv_1')(self.input)
+
+            net2 = AveragePooling2D(
+                [
+                    1, self.architecture['Modules'][self.track_name]['Layer2'][
+                        'pool_size']
+                ],
+                strides=[
+                    1, self.architecture['Modules'][self.track_name]['Layer2'][
+                        'pool_stride']
+                ],
+                padding='valid',
+                name='AvgPool_2')(net2)
+            if self.batch_norm:
+                net2 = BatchNormalization()(net2)
+            # apply dropout
+            net2 = Dropout(0.5)(net2)
+            net2 = Flatten()(net2)
+            net2 = Dense(
+                self.architecture['Modules'][self.track_name][
+                    'representation_width'])(net2)
+
+            # stack fully connected layers from both regular and dilated branches
+            stacked_layers = tf.reshape(tf.concat([net1,net2], 1), \
+                shape = [-1,2,self.architecture['Modules'][self.track_name]['representation_width'], 1])
+
+            stacked_layers = Flatten()(stacked_layers)
+            self.representation = Dense(
+                self.architecture['Modules'][self.track_name][
+                    'representation_width'],
+                name='representation')(stacked_layers)
 
 class Decoder():
 
@@ -980,11 +1191,26 @@ def kl_loss(y_true, y_pred):
 
 def catCrossEntropy(y_true,y_pred):
 
-    return tf.reduce_mean(categorical_crossentropy(y_true,y_pred))
+    crossEntropy = tf.reduce_mean(categorical_crossentropy(y_true,y_pred))
+    return(crossEntropy)
+    # return tf.clip_by_value(crossEntropy, 10e-8, 1.-10e-8)
 
 def binCrossEntropy(y_true,y_pred):
 
-    return tf.reduce_mean(binary_crossentropy(y_true,y_pred))
+    crossEntropy = tf.reduce_mean(binary_crossentropy(y_true,y_pred))
+    return crossEntropy
+    #return tf.clip_by_value(crossEntropy, 10e-8, 1.-10e-8)
+
+def exact_match_accuracy(y_true,y_pred,num_labels):
+
+    match = tf.equal(float(num_labels),tf.reduce_sum(tf.cast(tf.equal(y_true,tf.round(y_pred)),\
+        tf.float32),axis=1))
+
+    return tf.reduce_mean(tf.cast(match,tf.float32))
+
+def confusion_matrix(y_true,y_pred):
+
+    return tf.confusion_matrix(tf.argmax(y_pred,1),tf.argmax(y_true,1))
 
 def per_bp_accuracy(y_true, y_pred):
     pass

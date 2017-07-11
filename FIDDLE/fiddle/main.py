@@ -68,6 +68,7 @@ flags.DEFINE_string('resultsDir', '../results', 'directory where results from ru
 flags.DEFINE_string('inputs', 'None', 'inputs')
 flags.DEFINE_string('outputs', 'None', 'outputs')
 flags.DEFINE_integer('numEpochs', 15,'number of epochs through the training data')
+flags.DEFINE_integer('writeRate',1000,'number of batches through the training data between result summaries')
 FLAGS = flags.FLAGS
 
 
@@ -104,7 +105,6 @@ def main(_):
         tf.gfile.MakeDirs(FLAGS.savePath)
 
     # define neural network
-
     model = Integrator(config=config,
                        architecture_path=FLAGS.architecture,
                        learning_rate=FLAGS.learningRate,
@@ -141,16 +141,6 @@ def main(_):
     model.create_monitor_variables(show_filters=False)
     model.saver()
 
-    # instantiate training and validation log files
-    header_str = 'Loss'
-    for key in model.architecture['Outputs']:
-        header_str += '\t' + key + '_Accuracy'
-    header_str += '\n'
-    with open((FLAGS.savePath + "/" + "train.txt"), "w") as train_file:
-        train_file.write(header_str)
-    with open((FLAGS.savePath + "/" + "validation.txt"), "w") as validation_file:
-        validation_file.write(header_str)
-
     # select quality signals for prediction overlay during training
     num_signals = 5
     for key in model.architecture['Outputs']:
@@ -172,7 +162,7 @@ def main(_):
     return_dict = model.validate(validation_data, accuracy=True)
     print("Pre-train validation loss: " + str(return_dict['cost']))
     # print("Pre-train validation accuracy (%): " + str(return_dict['accuracy_' + key] / validation_data.values()[0].shape[0]))
-    totalIterations = int(FLAGS.numEpochs/1000./FLAGS.batchSize*train_size)
+    totalIterations = int(FLAGS.numEpochs/float(FLAGS.writeRate)/FLAGS.batchSize*train_size)
     print(totalIterations)
 
     for it in range(totalIterations):
@@ -181,43 +171,43 @@ def main(_):
         # linearly decreasing dropout probability from 20% (@ 1st iteration) to 0% (@ 1% of total iterations)
         # inputDropout = 0.2 - 0.2 * it / 10. if it <= (totalIterations // 100) else 0.
         inputDropout = 0.
-        epoch = it * 1000. * FLAGS.batchSize/train_size
+        epoch = it * float(FLAGS.writeRate) * FLAGS.batchSize/train_size
 
         print('\n\nEpoch: ' + str(epoch) + ', Iterations: ' + str(it))
-        print('Number of examples seen: ' + str(it * 1000 * FLAGS.batchSize))
+        print('Number of examples seen: ' + str(it * FLAGS.writeRate * FLAGS.batchSize))
         print('Input dropout probability: ' + str(inputDropout))
 
         t_batcher, t_trainer = 0, 0
 
-        for iterationNo in tq(range(1000)):
+        for iterationNo in tq(range(FLAGS.writeRate)):
             with Timer() as t:
                 train_batch = batcher.next()
             t_batcher += t.secs
             with Timer() as t:
+
                 return_dict = model.train(train_batch, accuracy=True, inp_dropout=inputDropout, batch_size=FLAGS.batchSize)
 
                 train_summary = return_dict['summary']
 
             t_trainer += t.secs
 
-            if iterationNo==0:
-                return_dict_train = return_dict.copy()
-            else:
-                return_dict_train = {key: return_dict_train[key]+val for key, val in return_dict.items()
-                                     if (type(val) is np.ndarray) or (type(val) is np.float32)}
-                return_dict_train.update({key: val for key, val in return_dict.items() if val is type('string')})
+            # if iterationNo==0:
+            #     return_dict_train = return_dict.copy()
+            # else:
+            #     return_dict_train = {key: return_dict_train[key]+val for key, val in return_dict.items()
+            #                          if (type(val) is np.ndarray) or (type(val) is np.float32)}
+            #     return_dict_train.update({key: val for key, val in return_dict.items() if val is type('string')})
             step += 1
-            print(return_dict)# ['species_labels_categ_accuracy'])
 
         print('Batcher time: ' + "%.3f" % t_batcher)
         print('Trainer time: ' + "%.3f" % t_trainer)
 
-        for key, val in return_dict_train.items():
-            if type(val) is not type('some_str_type'):
-                return_dict_train[key] /= iterationNo
+        # for key, val in return_dict_train.items():
+        #     if type(val) is not type('some_str_type'):
+        #         return_dict_train[key] /= iterationNo
 
-        # return_dict_train = {key: return_dict[key]for key, val in return_dict.items() #######
-        #                               if (type(val) is np.ndarray) or (type(val) is np.float32)} #######
+        return_dict_train = {key: return_dict[key]for key, val in return_dict.items() #######
+                                      if (type(val) is np.ndarray) or (type(val) is np.float32)} #######
 
         return_dict_train.update({key: np.sum(val) for key, val in return_dict_train.items()
                                   if (type(val) is np.ndarray) or (type(val) is np.float32)})
@@ -248,8 +238,19 @@ def main(_):
                 if FLAGS.visualizePrediction == 'online':
                     viz.visualize_dna(weights, pred_vec, name = 'iteration_{}'.format(it), save_dir = FLAGS.savePath)
 
-        write_to_txt(return_dict_train)
-        write_to_txt(return_dict_valid, batch_size=validation_data.values()[0].shape[0], datatype='validation')
+        # instantiate training and validation log files
+        if it == 0:
+            header_str = 'Epochs\t' + '\t'.join([key for key in sorted(return_dict_train.keys())])   
+            header_str += '\n'         
+
+            with open((FLAGS.savePath + "/" + "train.txt"), "w") as train_file:
+                train_file.write(header_str)
+            with open((FLAGS.savePath + "/" + "validation.txt"), "w") as validation_file:
+                validation_file.write(header_str)
+
+        # write updated results to training and validation log files
+        write_to_txt(return_dict_train,num_epochs=epoch)
+        write_to_txt(return_dict_valid, num_epochs=epoch, batch_size=validation_data.values()[0].shape[0], datatype='validation')
         model.summarize(train_summary = train_summary, validation_summary = return_dict_valid['summary'], step = step)
 
         if (return_dict_valid['cost'] < globalMinLoss) and (it>20):
@@ -262,7 +263,7 @@ def main(_):
 
 
 
-def write_to_txt(return_dict, batch_size = FLAGS.batchSize, datatype = 'train', verbose = True):
+def write_to_txt(return_dict, num_epochs, batch_size = FLAGS.batchSize, datatype = 'train', verbose = True):
     """Writes to text file the contents of return_dict, saves in FLAGS.savePath
 
     Args:
@@ -272,19 +273,20 @@ def write_to_txt(return_dict, batch_size = FLAGS.batchSize, datatype = 'train', 
         :param verbose: (boolean, default = True) level of information displayed
     """
 
-    line_to_write = ''
-    for key, val in return_dict.items():
+    line_to_write = str(num_epochs) + '\t'
+    for key in sorted(return_dict.keys()):
         if (key == 'cost') or ('accuracy' in key):
             cur_line = str(return_dict[key]) + '\t'
-            line_to_write += str(return_dict[key])
+            line_to_write += cur_line
         elif (key == '_') or (key == 'summary'):
             continue
         else:
-            cur_line = str(return_dict[key] / batch_size)
+            cur_line = str(return_dict[key]) #/ batch_size) ###############
             line_to_write += cur_line + '\t'
 
         if verbose:
             print(datatype + '\t' + key + ': ' + cur_line)
+
     with open((FLAGS.savePath + "/" + datatype + ".txt"), "a") as fp:
         fp.write(line_to_write + '\n')
 
