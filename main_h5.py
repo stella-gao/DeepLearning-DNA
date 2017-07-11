@@ -57,7 +57,7 @@ tbCallBack = callbacks.TensorBoard(log_dir='./blah', histogram_freq=0, \
         write_graph=True, write_images=True)
 
 train_size = train_file.values()[0].shape[0]
-num_species = train_file['labels'].shape[1]
+num_species = train_file['species_labels'].shape[1]
 
 # define placeholder for DNA sequences (represented via one-hot encoding)
 dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='dna')
@@ -84,7 +84,7 @@ preds = Dense(num_species,activation='softmax')(FC)
 loss = tf.reduce_mean(categorical_crossentropy(labels, preds))
 
 # gradient descent optimizer (Adam)
-train_step = tf.train.AdamOptimizer(learning_rate=learning_rate). \t
+train_step = tf.train.AdamOptimizer(learning_rate=learning_rate). \
                 minimize(loss)
 
 # internal accuracy
@@ -105,7 +105,7 @@ with sess.as_default():
     # initialize model saver
     saver = tf.train.Saver(max_to_keep=4)
 
-    print('epochs\tacc\tloss\tval_acc')
+    print('epochs\ttrain_acc\ttrain_loss\tval_acc\tval_loss')
     for i in range(totalIterations):
         batch = train_batcher.next()
         sess.run([train_step],feed_dict={dna: batch['dnaseq'], \
@@ -116,14 +116,14 @@ with sess.as_default():
 
             epoch_num = i/train_size*batch_size
 
-            acc_val, loss_val = sess.run([accuracy,loss],feed_dict={dna: batch['dnaseq'], \
+            train_acc,train_loss = sess.run([accuracy,loss],feed_dict={dna: batch['dnaseq'], \
                 labels: batch['species_labels'], K.learning_phase(): 0})
 
-            val_acc_val = sess.run(accuracy,feed_dict={dna: validation_dat, \
+            val_acc,val_loss = sess.run([accuracy,loss],feed_dict={dna: validation_dat, \
                 labels: validation_labels, K.learning_phase(): 0})
 
-            print('\t'.join([str(epoch_num),str(acc_val),str(loss_val), \
-                str(val_acc_val)]))
+            print('\t'.join([str(epoch_num),str(train_acc),str(train_loss), \
+                str(val_acc),str(val_loss)]))
 
     # save model
     saver.save(sess,species_dir + '_model')

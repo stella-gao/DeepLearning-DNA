@@ -29,7 +29,9 @@ def species2labels(species_names,species_list):
 
 def combine_speciesGO(species,species_names,ontology_terms,upstream_length,\
 		promoter_length,window_step):
-
+	'''integrates species and GO term associations with their corresponding
+	DNA sequences'''
+	
 	seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
 	    sp in species]
 	ontology_files = ['data/GOterms/' + GOterm + '.txt' for GOterm in ontology_terms]

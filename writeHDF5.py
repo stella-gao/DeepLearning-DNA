@@ -26,7 +26,7 @@ def write_species(species,analysis,window_step,upstream_length,promoter_length):
 
 		f.close()
 
-def combine_species(species_list,upstream_length,promoter_length,window_step,sampling_method=1):
+def combine_species(species_list,upstream_length,promoter_length,window_step,sampling_method=1,random_sample=True):
 	'''combines sequence data from all species into one large numpy array,
 	creates species labels for all sequences in the array, and writes the 
 	data to H5 datasets'''
@@ -38,7 +38,7 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
     # read in promoter sequences and convert to one-hot encoding sequences
 	seq_dicts = [read_fasta_seq(f) for f in seq_files]
 
-	if sampling_method == 1 or sampling_method == 2: 
+	if sampling_method <= 2: 
 		if sampling_method == 1: # select all windows from randomly selected genes
 			# set size of examples for each species to be equal to each other
 			min_datsize = min([len(seq_dict) for seq_dict in seq_dicts])
@@ -96,13 +96,14 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 		validation_dat = np.array([mat[i] for i in valIdx])
 		validation_labels = np.array([sp_labels[i] for i in valIdx])
 
-	else:
+	else: # ensure all genes are represented! (different # of windows/gene/species)
 		print('creating windows...')
 		gene_windows = [getallWindows(seq_dict,promoter_length,window_step,\
 			concat=False) for seq_dict in seq_dicts]
 		windows = [wind for wind,gene in gene_windows]
 		gene_list = [[gene for gene in sorted(seq_dict)] for seq_dict in seq_dicts]
 
+		# determine number of total windows per species
 		min_datsize = min([len(gene_window[1]) for gene_window in gene_windows])
 		# determine number of windows per gene to select for each species
 		num_windows_per_gene = [int(float(min_datsize)/len(seq_dict.keys())) \
@@ -131,6 +132,17 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 		num_windows_per_species_val = [window_set.shape[0] for \
 			window_set in validation_windows]
 
+		# create labels for randomly generated windows (set # of random windows
+		# to be equal to # of windows in 1st species, i.e. # of windows in index 0)
+		if random_sample:
+			random_trainsize = num_windows_per_species_train[0]
+			random_valsize = num_windows_per_species_val[0]
+
+			num_windows_per_species_train.append(random_trainsize)
+			num_windows_per_species_val.append(random_valsize)
+
+			species_list.append('random')
+
 		train_labels = getLabels(num_windows_per_species_train)
 		validation_labels = getLabels(num_windows_per_species_val)
 
@@ -157,9 +169,27 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 		train_dat = np.concatenate(train_windows)
 		validation_dat = np.concatenate(validation_windows)
 
+		# include randomly shuffled DNA sequences in the training, validation dataset
+		if random_sample:
+			print('shuffling to create random sequences...')
+			random_train = train_dat[np.random.choice(range(train_dat.shape[0]),\
+				random_trainsize)]
+			random_train = np.array([shuffle_onehotseq(random_train[i]) for \
+				i in range(random_train.shape[0])])
+			train_dat = np.concatenate([train_dat,random_train])
+			train_genes.extend(['random' for i in range(random_trainsize)])
+
+			random_val = validation_dat[np.random.choice(range(validation_dat.shape[0]),\
+				random_valsize)]
+			random_val = np.array([shuffle_onehotseq(random_val[i]) for \
+				i in range(random_val.shape[0])])
+			validation_dat = np.concatenate([validation_dat,random_val])
+			validation_genes.extend(['random' for i in range(random_valsize)])
+
 		# shuffle training data (to randomize batch-species pairs)
 		train_shuffleIdx = range(train_dat.shape[0])
 		np.random.shuffle(train_shuffleIdx)
+
 		train_dat = train_dat[np.array(train_shuffleIdx)]
 		train_labels = [train_labels[i] for i in train_shuffleIdx]
 		train_genes = [train_genes[i] for i in train_shuffleIdx]
@@ -168,6 +198,7 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 		# shuffle validation data (to randomize order of genes/species)
 		val_shuffleIdx = range(validation_dat.shape[0])
 		np.random.shuffle(val_shuffleIdx)
+
 		validation_dat = validation_dat[np.array(val_shuffleIdx)]
 		validation_labels = [validation_labels[i] for i in val_shuffleIdx]
 		validation_genes = [validation_genes[i] for i in val_shuffleIdx]
@@ -229,24 +260,6 @@ def combine_species_allgenes(species_list,upstream_length,promoter_length):
 	f.create_dataset('genes',data=gene_list,dtype=dt,compression='gzip')
 	f.close()
 
-upstream_length = 1000
-promoter_length = 500
-window_step = 20
-
-# species_list = ['sCer','cEleg','Mouse','Human']
-species_list = ['sCer','sBoul','sArb','sEub']
-
-seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
-sp in species_list]
-
-# combine_species_allgenes(species_list,upstream_length,promoter_length)
-# combine_species(species_list,upstream_length,promoter_length,window_step,3)
-
-# seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
-# sp in species_list]
-
-# # read in promoter sequences and convert to one-hot encoding sequences
-# seq_dicts = [read_fasta_seq(f) for f in seq_files]
 
 def rewriteHDF5(h5_file,dir_name):
 
@@ -263,10 +276,27 @@ def rewriteHDF5(h5_file,dir_name):
 	f.close()
 	g.close()
 
-dir_name = 'data/h5datasets/new2_all4/'
-rewriteHDF5('train.h5',dir_name)
-rewriteHDF5('validation.h5',dir_name)
+# dir_name = 'data/h5datasets/new2_all4/'
+# rewriteHDF5('train.h5',dir_name)
+# rewriteHDF5('validation.h5',dir_name)
 
-dir_name = 'data/h5datasets/new2_Sac4/'
-rewriteHDF5('train.h5',dir_name)
-rewriteHDF5('validation.h5',dir_name)
+# dir_name = 'data/h5datasets/new2_Sac4/'
+# rewriteHDF5('train.h5',dir_name)
+# rewriteHDF5('validation.h5',dir_name)
+
+upstream_length = 1000
+promoter_length = 500
+window_step = 20
+
+species_list = ['sCer','sPom']
+combine_species(species_list,upstream_length,promoter_length,window_step,3,False)
+
+species_list = ['sCer','sPom']
+combine_species(species_list,upstream_length,promoter_length,window_step,3,True)
+
+# species_list = ['sCer','cEleg','Mouse','Human']
+# combine_species(species_list,upstream_length,promoter_length,window_step,3,True)
+
+# species_list = ['sCer','sBoul','sArb','sEub']
+# combine_species(species_list,upstream_length,promoter_length,window_step,3,True)
+

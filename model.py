@@ -54,6 +54,15 @@ def onehot2nuc(onehot_dnaseq):
 
     return nuc_seq
     
+def shuffle_onehotseq(onehot_dnaseq):
+    '''shuffles the one-hot encoded DNA sequence by base pair'''
+
+    shuffleIdx = range(onehot_dnaseq.shape[1])
+    np.random.shuffle(shuffleIdx)
+    shuffledSeq = [onehot_dnaseq[i][shuffleIdx] for i in range(4)]
+
+    return np.array(shuffledSeq)
+
 def read_fasta_seq(file_name):
     '''reads in a file of promoter sequences in FASTA format and returns a 
     dictionary of one-hot encoded DNA sequences indexed by gene name'''
@@ -256,7 +265,7 @@ def getallWindows(seq_dict,window_size,step_size,concat=True):
 
     return np.array(all_dat), gene_list
 
-def multilabelWindows(seq_dicts,geneterm_dict,ontology_list,window_size,step_size):
+def multilabelWindows(seq_dicts,geneterm_dict,ontology_list,window_size,step_size,random_sample):
     '''generates windows for all sequences represented in both the sequence
     dictionaries and the gene ontology dictionaries; also returns the
     corresponding non-mutually exclusive labels to each of the windows and the
@@ -299,7 +308,10 @@ def multilabelWindows(seq_dicts,geneterm_dict,ontology_list,window_size,step_siz
             gene_count += 1
 
             # create labels for all windows
-            label = np.zeros(len(ontology_list),dtype=np.float32)
+            label_length = len(ontology_list)
+            if random_sample:
+                label_length += 1
+            label = np.zeros(label_length,dtype=np.float32)
             for GOterm in geneterm_dict[species_gene_name]:
                 label[ontology_list.index(GOterm)] = 1.
 
