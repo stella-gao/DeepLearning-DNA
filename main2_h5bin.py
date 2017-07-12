@@ -78,15 +78,17 @@ pool2 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', 
 drop2 = Dropout(0.5)(pool2)
 flat = Flatten()(drop2)
 FC = Dense(50,activation='relu',name='representation')(flat)
-preds = Dense(num_GOterms,activation='sigmoid')(FC)
 
-# loss function
-loss = tf.reduce_mean(binary_crossentropy(labels, preds))
-# loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(labels=labels,logits=preds))
+preds_list = [Dense(2,activation='softmax')(FC) for i in range(num_GOterms)]
+labels_list = [tf.placeholder(tf.float32,[None,2]) for i in range(num_GOterms)]
+
+total_loss = 0
+for i in range(num_GOterms):
+    total_loss += tf.reduce_mean(categorical_crossentropy(labels_list[i],preds_list[i]))
 
 # gradient descent optimizer (Adam)
 train_step = tf.train.AdamOptimizer(learning_rate=learning_rate). \
-                minimize(loss)
+                minimize(total_loss)
 
 # # one match accuracy
 # onematch_pred = tf.equal(tf.argmax(tf.multiply(labels,preds),axis=-1), \
@@ -94,13 +96,22 @@ train_step = tf.train.AdamOptimizer(learning_rate=learning_rate). \
 # onematch = tf.reduce_mean(tf.cast(onematch_pred, tf.float32))
 
 # exact match accuracy
-match = tf.equal(float(num_GOterms),\
-    tf.reduce_sum(tf.cast(tf.equal(labels,tf.round(preds)),tf.float32),axis=1))
-exactmatch = tf.reduce_mean(tf.cast(match,tf.float32))
+# match = tf.equal(float(num_GOterms),\
+#     tf.reduce_sum(tf.cast(tf.equal(labels,tf.round(preds)),tf.float32),axis=1))
+# exactmatch = tf.reduce_mean(tf.cast(match,tf.float32))
+match = 0
+for i in range(num_GOterms):
+    match += tf.cast(tf.equal(float(2),tf.reduce_sum(tf.cast(tf.equal(labels_list[i], \
+        preds_list[i]),tf.float32),axis=1)),tf.float32)
+exactmatch = tf.reduce_mean(tf.cast(tf.equal(float(num_GOterms),match),tf.float32))
 
 # binary accuracy
-binacc_pred = binary_accuracy(labels,preds)
-binacc = tf.reduce_mean(binacc_pred)
+acc = 0
+for i in range(num_GOterms):
+    correct_pred = tf.equal(tf.argmax(preds_list[i], 1), tf.argmax(labels_list[i], 1))
+    acc += tf.divide(tf.reduce_mean(tf.cast(correct_pred, tf.float32)),num_GOterms)
+    # acc += tf.divide(categorical_accuracy(labels_list[i],preds_list[i]),num_GOterms)
+# binacc = tf.reduce_mean(binacc_vals)
 
 # determine number of total iterations
 totalIterations = int(epochs/batch_size*train_size)
@@ -116,28 +127,34 @@ with sess.as_default():
     # initialize model saver
     saver = tf.train.Saver(max_to_keep=4)
 
-    print('epochs\ttrain_loss\ttrain_binacc\ttrain_exactmatch\tval_loss\tval_binacc\tval_exactmatch')
+    print('epochs\ttrain_loss\ttrain_acc\ttrain_exactmatch\tval_loss\tval_acc\tval_exactmatch')
 
     for i in range(totalIterations):
         batch = train_batcher.next()
-        sess.run([train_step],feed_dict={dna: batch['dnaseq'], \
-            labels: batch['GO_labels'], K.learning_phase(): 1})
+
+        train_feed_dict = {labels_list[i]: batch['GO_labels'][:,i] for i in range(num_GOterms)}
+        train_feed_dict.update({dna: batch['dnaseq'], K.learning_phase(): 1})
+
+        sess.run([train_step],feed_dict=train_feed_dict)
 
         # log training and validation accuracy
         if i%100 == 0:
 
             epoch_num = i/train_size*batch_size
 
-            train_loss,train_exactmatch,train_binacc = sess.run([loss,exactmatch,binacc],\
-                feed_dict={dna: batch['dnaseq'], \
-                labels: batch['GO_labels'], K.learning_phase(): 0})
+            train_feed_dict = {labels_list[i]: batch['GO_labels'][:,i] for i in range(num_GOterms)}
+            train_feed_dict.update({dna: batch['dnaseq'], K.learning_phase(): 0})
+            train_loss,train_exactmatch,train_acc = sess.run([total_loss,exactmatch,acc],\
+                feed_dict=train_feed_dict)
 
-            val_loss,val_exactmatch,val_binacc = sess.run([loss,exactmatch,binacc], \
-                feed_dict={dna: validation_dat, \
-                labels: validation_labels,K.learning_phase(): 0})
+            val_feed_dict = {labels_list[i]: validation_labels[:,i] for i in range(num_GOterms)}
+            val_feed_dict.update({dna: validation_dat, K.learning_phase(): 0})
 
-            print('\t'.join([str(epoch_num),str(train_loss),str(train_binacc), \
-                str(train_exactmatch),str(val_loss),str(val_binacc),str(val_exactmatch)]))
+            val_loss,val_exactmatch,val_acc = sess.run([total_loss,exactmatch,acc], \
+                feed_dict=val_feed_dict)
+
+            print('\t'.join([str(epoch_num),str(train_loss),str(train_acc), \
+                str(train_exactmatch),str(val_loss),str(val_acc),str(val_exactmatch)]))
 
     # save model
     saver.save(sess,species_dir + '_model')

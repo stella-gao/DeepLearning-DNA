@@ -31,7 +31,7 @@ def combine_speciesGO(species,species_names,ontology_terms,upstream_length,\
 		promoter_length,window_step):
 	'''integrates species and GO term associations with their corresponding
 	DNA sequences'''
-	
+
 	seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
 	    sp in species]
 	ontology_files = ['data/GOterms/' + GOterm + '.txt' for GOterm in ontology_terms]
@@ -105,8 +105,97 @@ def combine_speciesGO(species,species_names,ontology_terms,upstream_length,\
 	f.create_dataset('genes',data=validation_genelist,dtype=dt,compression='gzip')
 	f.close()
 
-combine_speciesGO(species,species_names,ontology_terms,upstream_length,\
-		promoter_length,window_step)
+def combine_speciesGO2(species,species_names,GO_file,ontology_terms,upstream_length,\
+		promoter_length,window_step):
+
+	'''reads in a file downloaded from AMIGO with GO term, species, gene info and integrates
+	that data with the DNA sequences of regions corresponding to the genes to generate a 
+	complete dataset with GO term and species labels associated with the sequences that 
+	is written to file in H5 format'''
+
+	seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
+	    sp in species]
+
+	GO_dicts,species_genedict = getGOterms_all(GO_file,species_names,ontology_terms)
+
+	seq_dicts = {species_names[i]: read_fasta_seq(seq_files[i],\
+		species_genedict[species_names[i]]) for i in range(len(species_names))}
+
+	# creates a dictionary of ontologies indexed by species+gene names
+	geneterm_dict = geneGO_dict(GO_dicts)
+
+	# isolate genes to be included in training and validation datasets
+	train_geneterms = list(np.random.choice(geneterm_dict.keys(),\
+		int(len(geneterm_dict)*0.8),replace=False))
+	validation_geneterms = [geneterm for geneterm in geneterm_dict.keys() \
+		if geneterm not in train_geneterms]
+
+	train_geneterm_dict = {key:geneterm_dict[key] for key in geneterm_dict.keys() \
+		if key in train_geneterms}
+	val_geneterm_dict = {key:geneterm_dict[key] for key in geneterm_dict.keys() \
+		if key in validation_geneterms}
+
+	# get windows, labels, species+gene names for training, validation data
+	train_dat,train_labels,train_genelist = \
+		multilabelWindows(seq_dicts,train_geneterm_dict,\
+		ontology_terms,promoter_length,window_step,False)
+
+	validation_dat,validation_labels,validation_genelist = \
+		multilabelWindows(seq_dicts,val_geneterm_dict,\
+		ontology_terms,promoter_length,window_step,False)
+
+	# shuffle training data (to randomize batch-species pairs)
+	train_shuffleIdx = range(train_dat.shape[0])
+	np.random.shuffle(train_shuffleIdx)
+	train_dat = train_dat[np.array(train_shuffleIdx)]
+	train_labels = [train_labels[i] for i in train_shuffleIdx]
+	train_genelist = [train_genelist[i] for i in train_shuffleIdx]
+
+	# shuffle validation data (to randomize species+gene order)
+	val_shuffleIdx = range(validation_dat.shape[0])
+	np.random.shuffle(val_shuffleIdx)
+	validation_dat = validation_dat[np.array(val_shuffleIdx)]
+	validation_labels = [validation_labels[i] for i in val_shuffleIdx]
+	validation_genelist = [validation_genelist[i] for i in val_shuffleIdx]
+
+	# separate species from species+gene lists in training, validation data
+	train_specieslist = [n.split('~')[0] for n in train_genelist]
+	validation_specieslist = [n.split('~')[0] for n in validation_genelist]
+
+	# create one-hot encoded species labels for training, validation data
+	train_specieslabels = species2labels(species_names,train_specieslist)
+	validation_specieslabels = species2labels(species_names,validation_specieslist)
+
+	dt = h5py.special_dtype(vlen=unicode)
+
+	f = h5py.File(str(species[0]) + '+'.join(ontology_terms) + '.train.h5','w')
+	f.create_dataset('dnaseq',data=train_dat,dtype='f',compression='gzip')
+	f.create_dataset('GO_labels',data=train_labels,dtype='f',compression='gzip')
+	f.create_dataset('species_labels',data=train_specieslabels,dtype='f',compression='gzip')
+	f.create_dataset('genes',data=train_genelist,dtype=dt,compression='gzip')
+	f.close()
+
+	f = h5py.File(str(species[0]) + '+'.join(ontology_terms) + '.validation.h5','w')
+	f.create_dataset('dnaseq',data=validation_dat,dtype='f',compression='gzip')
+	f.create_dataset('GO_labels',data=validation_labels,dtype='f',compression='gzip')
+	f.create_dataset('species_labels',data=validation_specieslabels,dtype='f',compression='gzip')
+	f.create_dataset('genes',data=validation_genelist,dtype=dt,compression='gzip')
+	f.close()
+
+ontology_terms = ['response to oxidative stress','response to hypoxia',\
+	'response to endoplasmic reticulum stress','cellular response to starvation']
+
+species = ['Human']
+species_names = ['sapien']
+GO_file = 'data/GOterms/stress_response.txt'
+upstream_length = 1000
+promoter_length = 500
+window_step = 20
+
+combine_speciesGO2(species,species_names,GO_file,ontology_terms,upstream_length,promoter_length,window_step)
+
+# combine_speciesGO(species,species_names,ontology_terms,upstream_length,\
+# 		promoter_length,window_step)
 
 # seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
 #     sp in species]

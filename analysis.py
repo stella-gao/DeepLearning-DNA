@@ -154,20 +154,21 @@ def getPredictions(model_name,model_dir,testdata_file,label_names):
 	labels = graph.get_tensor_by_name("label:0")
 	dropout1 = graph.get_tensor_by_name("dropout_1/keras_learning_phase:0")
 	opt = graph.get_tensor_by_name('representation/Relu:0')
-	preds = graph.get_tensor_by_name('dense_1/Softmax:0')
+	# preds = graph.get_tensor_by_name('dense_1/Softmax:0')
+	preds = graph.get_tensor_by_name('dense_1/Sigmoid:0')
 
 	# load test data
 	f = h5py.File(testdata_file,'r')
 	test_dat = f['dnaseq'][0:10000]
-	test_labels = f['labels'][0:10000]
+	test_labels = f['GO_labels'][0:10000]
 
 	# run session and get output of representational layer
 	feed_dict = {dna: test_dat, labels: test_labels, dropout1: 0}
 	predictions = sess.run(preds,feed_dict)
 
-	truelabel_names = f['species'][0:10000]
-	truelabel_names = [str(i) for i in truelabel_names]
-	# truelabel_names = [label_names[np.argmax(label)] for label in test_labels]
+	# truelabel_names = f['species'][0:10000]
+	# truelabel_names = [str(i) for i in truelabel_names]
+	truelabel_names = [label_names[np.argmax(label)] for label in test_labels]
 	prediction_names = [label_names[np.argmax(pred)] for pred in predictions]
 
 	f.close()
@@ -401,10 +402,10 @@ def GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4):
 
 # f.close()
 
-representation_file = 'results/saved_models/sCer_cEleg_Mouse_Human/sCer_cEleg_Mouse_Human_val_rep.txt'
-metadata_file = 'results/saved_models/sCer_cEleg_Mouse_Human/sCer_cEleg_Mouse_Human_val_metadata.tsv'
-label_set = ['2','3']
-output_file = 'all4_Mouse_Human.tsv'
+# representation_file = 'results/saved_models/sCer_cEleg_Mouse_Human/sCer_cEleg_Mouse_Human_val_rep.txt'
+# metadata_file = 'results/saved_models/sCer_cEleg_Mouse_Human/sCer_cEleg_Mouse_Human_val_metadata.tsv'
+# label_set = ['2','3']
+# output_file = 'all4_Mouse_Human.tsv'
 
 # filterLabels(representation_file,metadata_file,label_set,output_file)
 
@@ -413,11 +414,12 @@ output_file = 'all4_Mouse_Human.tsv'
 # testdata_file = 'data/h5datasets/sCer_cEleg_Mouse_Human/validation.h5'
 
 # label_names = ['sCer','cEleg','Mouse','Human']
-# model_name = 'new2_all4_model'
-# model_dir = ''
-# testdata_file = 'data/h5datasets/new2_all4/validation.h5'
-# a = getPredictions(model_name,model_dir,testdata_file,label_names)
-# # print a[1]
+label_names = ['ox','hypox','ER','starv']
+model_name = 'MamGO4stress_model'
+model_dir = ''
+testdata_file = 'data/h5datasets_GO/MamGO4stress/validation.h5'
+a = getPredictions(model_name,model_dir,testdata_file,label_names)
+# print a[1]
 # a = get_representations(model_name,model_dir,testdata_file)
 
 # file_name = 'all.h5'
@@ -428,7 +430,7 @@ output_file = 'all4_Mouse_Human.tsv'
 # write_metadata(['sCer','sBoul','sArb','sEub'],'new2_Sac4','validation.h5')
 # write_metadata(['sCer','cEleg','Mouse','Human'],'new2_all4','validation.h5')
 # write_metadataGO(['stress','cell_cycle','chromosome_org','cell_loc','kinase','pyrophos','multiple'],'new_sCer_6GO')
-write_metadataGO(['stress','cc','chr_org','multiple'],'new_sCer_stress+cc+chrorg')
+# write_metadataGO(['stress','cc','chr_org','multiple'],'new_sCer_stress+cc+chrorg')
 
 
 # data_file = 'results/saved_models/sCer_cEleg_Mouse_Human/blah.txt'

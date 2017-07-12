@@ -124,6 +124,22 @@ def combine_GOterms(species,species_list,ontology_terms,upstream_length,\
 	f.create_dataset('genes',data=validation_genelist,dtype=dt,compression='gzip')
 	f.close()
 
+def convertLabels(labels):
+	'''converts an array of multi-label vectors into array containing arrays
+	of binary labels'''
+
+	converted_labels = []
+	for i in range(labels.shape[0]):	
+		bin_labels = []
+		for j in range(labels.shape[1]):
+			if labels[i][j] == 1:
+				bin_labels.append(np.array([1.,0.]))
+			else:
+				bin_labels.append(np.array([0.,1.]))
+		converted_labels.append(np.array(bin_labels))
+
+	return np.array(converted_labels)
+
 species = ['sCer'] #,'cEleg','Mouse','Human']
 species_list = ['cerevisiae'] #,'elegans','musculus','sapiens']
 
@@ -152,105 +168,129 @@ def rewriteHDF5_GO(h5_file,dir_name):
 	f.close()
 	g.close()
 
-dir_name = 'data/h5datasets_GO/new_sCer_6GO/'
-rewriteHDF5_GO('train.h5',dir_name)
-rewriteHDF5_GO('validation.h5',dir_name)
+def rewriteHDF5_GO2(h5_file,dir_name):
 
-dir_name = 'data/h5datasets_GO/new_sCer_stress+cc+chrorg/'
-rewriteHDF5_GO('train.h5',dir_name)
-rewriteHDF5_GO('validation.h5',dir_name)
+	f = h5py.File(dir_name + h5_file,'r')
+	g = h5py.File(dir_name + h5_file + '_new','w')
+
+	dt = h5py.special_dtype(vlen=unicode)
+
+	GO_labels = convertLabels(f['GO_labels'][:])
+
+	g.create_dataset('dnaseq',data=f['dnaseq'][:],dtype='f',compression='gzip')
+	g.create_dataset('GO_labels',data=GO_labels,dtype='f',compression='gzip')
+	g.create_dataset('genes',data=f['genes'][:],dtype=dt,compression='gzip')
+
+	f.close()
+	g.close()
+
+dir_name = 'data/h5datasets_GO/MamGO4stress/'
+rewriteHDF5_GO2('train.h5',dir_name)
+rewriteHDF5_GO2('validation.h5',dir_name)
+
+# dir_name = 'data/h5datasets_GO/new_sCer_6GO/'
+# rewriteHDF5_GO('train.h5',dir_name)
+# rewriteHDF5_GO('validation.h5',dir_name)
+
+# dir_name = 'data/h5datasets_GO/new_sCer_stress+cc+chrorg/'
+# rewriteHDF5_GO('train.h5',dir_name)
+# rewriteHDF5_GO('validation.h5',dir_name)
 
 
-seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
-    sp in species]
-ontology_files = ['data/GOterms/' + GOterm + '.txt' for GOterm in ontology_terms]
 
-# read in promoter sequences and convert to one-hot encoding sequences
-seq_dicts = {species_list[i]:read_fasta_seq(seq_files[i]) for i \
-    in range(len(species_list))}
 
-# read in GO terms and corresponding genes for each species
-GO_dicts = {ontology_terms[i]:getGOterms(ontology_files[i],species_list) \
-    for i in range(len(ontology_files))}
 
-# creates a dictionary of ontologies indexed by species+gene names
-geneterm_dict = geneGO_dict(GO_dicts)
 
-# isolate genes to be included in training and validation datasets
-train_geneterms = list(np.random.choice(geneterm_dict.keys(),\
-	int(len(geneterm_dict)*0.8),replace=False))
-validation_geneterms = [geneterm for geneterm in geneterm_dict.keys() \
-	if geneterm not in train_geneterms]
+# seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
+#     sp in species]
+# ontology_files = ['data/GOterms/' + GOterm + '.txt' for GOterm in ontology_terms]
 
-train_geneterm_dict = {key:geneterm_dict[key] for key in geneterm_dict.keys() \
-	if key in train_geneterms}
-val_geneterm_dict = {key:geneterm_dict[key] for key in geneterm_dict.keys() \
-	if key in validation_geneterms}
+# # read in promoter sequences and convert to one-hot encoding sequences
+# seq_dicts = {species_list[i]:read_fasta_seq(seq_files[i]) for i \
+#     in range(len(species_list))}
 
-# get windows, labels, species+gene names for training, validation data
-train_dat,train_labels,train_genelist = \
-	multilabelWindows(seq_dicts,train_geneterm_dict,\
-	ontology_terms,promoter_length,window_step,random_sample)
+# # read in GO terms and corresponding genes for each species
+# GO_dicts = {ontology_terms[i]:getGOterms(ontology_files[i],species_list) \
+#     for i in range(len(ontology_files))}
 
-validation_dat,validation_labels,validation_genelist = \
-	multilabelWindows(seq_dicts,val_geneterm_dict,\
-	ontology_terms,promoter_length,window_step,random_sample)
+# # creates a dictionary of ontologies indexed by species+gene names
+# geneterm_dict = geneGO_dict(GO_dicts)
 
-if random_sample:
-	print('shuffling to create random sequences...')
+# # isolate genes to be included in training and validation datasets
+# train_geneterms = list(np.random.choice(geneterm_dict.keys(),\
+# 	int(len(geneterm_dict)*0.8),replace=False))
+# validation_geneterms = [geneterm for geneterm in geneterm_dict.keys() \
+# 	if geneterm not in train_geneterms]
 
-	# random training data
-	random_trainsize = train_dat.shape[0]/len(ontology_terms)
-	random_train = train_dat[np.random.choice(range(train_dat.shape[0]),\
-		random_trainsize)]
-	random_train = np.array([shuffle_onehotseq(random_train[i]) for \
-		i in range(random_train.shape[0])])
-	train_dat = np.concatenate([train_dat,random_train])
+# train_geneterm_dict = {key:geneterm_dict[key] for key in geneterm_dict.keys() \
+# 	if key in train_geneterms}
+# val_geneterm_dict = {key:geneterm_dict[key] for key in geneterm_dict.keys() \
+# 	if key in validation_geneterms}
 
-	# random validation data
-	random_valsize = validation_dat.shape[0]/len(ontology_terms)
-	random_val = validation_dat[np.random.choice(range(validation_dat.shape[0]),\
-		random_valsize)]
-	random_val = np.array([shuffle_onehotseq(random_val[i]) for \
-		i in range(random_val.shape[0])])
-	validation_dat = np.concatenate([validation_dat,random_val])
+# # get windows, labels, species+gene names for training, validation data
+# train_dat,train_labels,train_genelist = \
+# 	multilabelWindows(seq_dicts,train_geneterm_dict,\
+# 	ontology_terms,promoter_length,window_step,random_sample)
 
-	# random training, validation labels
-	random_label = np.zeros(len(ontology_terms)+1,dtype=np.float32)
-	random_label[len(ontology_terms)] = 1.
-	train_labels = np.concatenate([train_labels,\
-		np.array([random_label for i in range(random_trainsize)])])
-	validation_labels = np.concatenate([validation_labels,\
-		np.array([random_label for i in range(random_valsize)])])	
+# validation_dat,validation_labels,validation_genelist = \
+# 	multilabelWindows(seq_dicts,val_geneterm_dict,\
+# 	ontology_terms,promoter_length,window_step,random_sample)
 
-	# random training, validation genelist
-	train_genelist.extend(['random' for i in range(random_trainsize)])
-	validation_genelist.extend(['random' for i in range(random_valsize)])		
+# if random_sample:
+# 	print('shuffling to create random sequences...')
 
-# shuffle training data (to randomize batch-species pairs)
-train_shuffleIdx = range(train_dat.shape[0])
-np.random.shuffle(train_shuffleIdx)
-train_dat = train_dat[np.array(train_shuffleIdx)]
-train_labels = [train_labels[i] for i in train_shuffleIdx]
-train_genelist = [train_genelist[i] for i in train_shuffleIdx]
+# 	# random training data
+# 	random_trainsize = train_dat.shape[0]/len(ontology_terms)
+# 	random_train = train_dat[np.random.choice(range(train_dat.shape[0]),\
+# 		random_trainsize)]
+# 	random_train = np.array([shuffle_onehotseq(random_train[i]) for \
+# 		i in range(random_train.shape[0])])
+# 	train_dat = np.concatenate([train_dat,random_train])
 
-# shuffle validation data (to randomize species+gene order)
-val_shuffleIdx = range(validation_dat.shape[0])
-np.random.shuffle(val_shuffleIdx)
-validation_dat = validation_dat[np.array(val_shuffleIdx)]
-validation_labels = [validation_labels[i] for i in val_shuffleIdx]
-validation_genelist = [validation_genelist[i] for i in val_shuffleIdx]
+# 	# random validation data
+# 	random_valsize = validation_dat.shape[0]/len(ontology_terms)
+# 	random_val = validation_dat[np.random.choice(range(validation_dat.shape[0]),\
+# 		random_valsize)]
+# 	random_val = np.array([shuffle_onehotseq(random_val[i]) for \
+# 		i in range(random_val.shape[0])])
+# 	validation_dat = np.concatenate([validation_dat,random_val])
 
-dt = h5py.special_dtype(vlen=unicode)
+# 	# random training, validation labels
+# 	random_label = np.zeros(len(ontology_terms)+1,dtype=np.float32)
+# 	random_label[len(ontology_terms)] = 1.
+# 	train_labels = np.concatenate([train_labels,\
+# 		np.array([random_label for i in range(random_trainsize)])])
+# 	validation_labels = np.concatenate([validation_labels,\
+# 		np.array([random_label for i in range(random_valsize)])])	
 
-f = h5py.File(str(species[0]) + '+'.join(ontology_terms) + '.train.h5','w')
-f.create_dataset('dnaseq',data=train_dat,dtype='f',compression='gzip')
-f.create_dataset('GO_labels',data=train_labels,dtype='f',compression='gzip')
-f.create_dataset('genes',data=train_genelist,dtype=dt,compression='gzip')
-f.close()
+# 	# random training, validation genelist
+# 	train_genelist.extend(['random' for i in range(random_trainsize)])
+# 	validation_genelist.extend(['random' for i in range(random_valsize)])		
 
-f = h5py.File(str(species[0]) + '+'.join(ontology_terms) + '.validation.h5','w')
-f.create_dataset('dnaseq',data=validation_dat,dtype='f',compression='gzip')
-f.create_dataset('GO_labels',data=validation_labels,dtype='f',compression='gzip')
-f.create_dataset('genes',data=validation_genelist,dtype=dt,compression='gzip')
-f.close()
+# # shuffle training data (to randomize batch-species pairs)
+# train_shuffleIdx = range(train_dat.shape[0])
+# np.random.shuffle(train_shuffleIdx)
+# train_dat = train_dat[np.array(train_shuffleIdx)]
+# train_labels = [train_labels[i] for i in train_shuffleIdx]
+# train_genelist = [train_genelist[i] for i in train_shuffleIdx]
+
+# # shuffle validation data (to randomize species+gene order)
+# val_shuffleIdx = range(validation_dat.shape[0])
+# np.random.shuffle(val_shuffleIdx)
+# validation_dat = validation_dat[np.array(val_shuffleIdx)]
+# validation_labels = [validation_labels[i] for i in val_shuffleIdx]
+# validation_genelist = [validation_genelist[i] for i in val_shuffleIdx]
+
+# dt = h5py.special_dtype(vlen=unicode)
+
+# f = h5py.File(str(species[0]) + '+'.join(ontology_terms) + '.train.h5','w')
+# f.create_dataset('dnaseq',data=train_dat,dtype='f',compression='gzip')
+# f.create_dataset('GO_labels',data=train_labels,dtype='f',compression='gzip')
+# f.create_dataset('genes',data=train_genelist,dtype=dt,compression='gzip')
+# f.close()
+
+# f = h5py.File(str(species[0]) + '+'.join(ontology_terms) + '.validation.h5','w')
+# f.create_dataset('dnaseq',data=validation_dat,dtype='f',compression='gzip')
+# f.create_dataset('GO_labels',data=validation_labels,dtype='f',compression='gzip')
+# f.create_dataset('genes',data=validation_genelist,dtype=dt,compression='gzip')
+# f.close()
