@@ -68,15 +68,20 @@ labels = tf.placeholder(tf.float32,shape=(None,num_species),name='label')
 # build layers of network
 conv1 = Conv2D(num_filters,[filter_height1,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_1')(dna)
-pool1 = MaxPooling2D((1,pool_size),strides=(1,pool_stride),\
-            name='MaxPool_1')(conv1)
+pool1 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
+            name='AvgPool_1')(conv1)
 drop1 = Dropout(0.5)(pool1)
 conv2 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_2')(drop1)
-pool2 = MaxPooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-            name='MaxPool_2')(conv2)
+pool2 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+            name='AvgPool_2')(conv2)
 drop2 = Dropout(0.5)(pool2)
-flat = Flatten()(drop2)
+conv3 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
+            kernel_regularizer='l2',padding='valid',name='conv_3')(drop1)
+pool3 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+            name='AvgPool_3')(conv2)
+drop3 = Dropout(0.5)(pool3)
+flat = Flatten()(drop3)
 FC = Dense(50,activation='relu',name='representation')(flat)
 preds = Dense(num_species,activation='softmax')(FC)
 

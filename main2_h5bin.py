@@ -68,30 +68,30 @@ labels = tf.placeholder(tf.float32,shape=(None,num_GOterms),name='label')
 # build layers of network
 conv1 = Conv2D(num_filters,[filter_height1,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_1')(dna)
-pool1 = AvgPooling2D((1,pool_size),strides=(1,pool_stride),\
+pool1 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
             name='AvgPool_1')(conv1)
 drop1 = Dropout(0.5)(pool1)
 conv2 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_2')(drop1)
-pool2 = AvgPooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+pool2 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
             name='AvgPool_2')(conv2)
 drop2 = Dropout(0.5)(pool2)
 
 conv3 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_2')(drop2)
-pool3 = AvgPooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+pool3 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
             name='AvgPool_2')(conv3)
 drop3 = Dropout(0.5)(pool3)
 
 conv4 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_2')(drop3)
-pool4 = AvgPooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+pool4 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
             name='AvgPool_2')(conv4)
 drop4 = Dropout(0.5)(pool4)
 
 conv5 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_2')(drop4)
-pool5 = AvgPooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+pool5 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
             name='AvgPool_2')(conv5)
 drop5 = Dropout(0.5)(pool5)
 

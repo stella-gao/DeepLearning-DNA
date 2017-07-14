@@ -30,7 +30,7 @@ promoter_length = 500
 
 # training parameters
 epochs = 30
-batch_size = 200
+batch_size = 100
 
 # CNN hyperparameters
 num_filters = 50
@@ -77,12 +77,12 @@ conv2 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
 pool2 = MaxPooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
             name='MaxPool_2')(conv2)
 drop2 = Dropout(0.5)(pool2)
-# ###
-# conv3 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
-#             kernel_regularizer='l2',padding='valid',name='conv_3')(drop2)
-# pool3 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-#             name='AvgPool_3')(conv3)
-# drop3 = Dropout(0.5)(pool3)
+###
+conv3 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
+            kernel_regularizer='l2',padding='valid',name='conv_3')(drop2)
+pool3 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+            name='AvgPool_3')(conv3)
+drop3 = Dropout(0.5)(pool3)
 # ###
 # conv4 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
 #             kernel_regularizer='l2',padding='valid',name='conv_2')(drop3)
@@ -102,8 +102,8 @@ drop2 = Dropout(0.5)(pool2)
 #             name='AvgPool_4')(conv6)
 # drop6 = Dropout(0.5)(pool6)
 
-flat = Flatten()(drop2)
-FC = Dense(500,activation='relu',name='representation')(flat)
+flat = Flatten()(drop3)
+FC = Dense(50,activation='relu',name='representation')(flat)
 preds = Dense(num_GOterms,activation='sigmoid')(FC)
 
 # loss function
@@ -150,7 +150,7 @@ with sess.as_default():
             labels: batch['GO_labels'], K.learning_phase(): 1})
 
         # log training and validation accuracy
-        if i%100 == 0:
+        if i%20 == 0:
 
             epoch_num = i/train_size*batch_size
 

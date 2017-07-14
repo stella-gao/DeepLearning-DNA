@@ -16,7 +16,7 @@ def read_gtf(gtf_file):
                 if line[2] == 'gene':
                     annotations = line[8].split(';')
                     for annot in annotations:                
-                        if 'gene_id' in annot:
+                        if 'gene_name' in annot:
                             chrno = 'chr'+line[0]
                             if chrno not in annot_dict:
                                 annot_dict[chrno] = {}
@@ -105,10 +105,45 @@ def writeSequence(seq_dict,outfile_name):
 
     f.close()
 
-
 species = 'Human'
 ann_file = 'data/annotation_files/' + species + '.gtf.gz'
-genomedat_dir = 'data/genome_files/' + 'Human_unmasked' # species
+genomedat_dir = 'data/genome_files/' + species
+promoter_length = 1000
+
+annot_dict = read_gtf(ann_file)
+seq_dict = readSequences(annot_dict,genomedat_dir,promoter_length)
+writeSequence(seq_dict,species + str(promoter_length) + '.fa.txt')
+
+species = 'Mouse'
+ann_file = 'data/annotation_files/' + species + '.gtf.gz'
+genomedat_dir = 'data/genome_files/' + species
+promoter_length = 1000
+
+annot_dict = read_gtf(ann_file)
+seq_dict = readSequences(annot_dict,genomedat_dir,promoter_length)
+writeSequence(seq_dict,species + str(promoter_length) + '.fa.txt')
+
+species = 'cEleg'
+ann_file = 'data/annotation_files/' + species + '.gtf.gz'
+genomedat_dir = 'data/genome_files/' + species
+promoter_length = 1000
+
+annot_dict = read_gtf(ann_file)
+seq_dict = readSequences(annot_dict,genomedat_dir,promoter_length)
+writeSequence(seq_dict,species + str(promoter_length) + '.fa.txt')
+
+species = 'sCer'
+ann_file = 'data/annotation_files/' + species + '.gtf.gz'
+genomedat_dir = 'data/genome_files/' + species
+promoter_length = 1000
+
+annot_dict = read_gtf(ann_file)
+seq_dict = readSequences(annot_dict,genomedat_dir,promoter_length)
+writeSequence(seq_dict,species + str(promoter_length) + '.fa.txt')
+
+species = 'sPom'
+ann_file = 'data/annotation_files/' + species + '.gtf.gz'
+genomedat_dir = 'data/genome_files/' + species
 promoter_length = 1000
 
 annot_dict = read_gtf(ann_file)

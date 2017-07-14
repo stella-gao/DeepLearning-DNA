@@ -17,13 +17,13 @@ def write_metadata(label_set,data_dir,file_name):
 	g = open(data_dir + '_metadata.tsv','w')
 	writer = csv.writer(g,delimiter='\t')
 
-	writer.writerow(['index','label'])
+	writer.writerow(['index','species_label'])
 	if file_name == 'validation.h5':
-		val_datsize = min(10000,f['labels'].shape[0])
+		val_datsize = min(10000,f['species_labels'].shape[0])
 	else:
-		val_datsize = f['labels'].shape[0]
+		val_datsize = f['species_labels'].shape[0]
 	for i in range(val_datsize):
-		labelIdx = list(f['labels'][i]).index(max(f['labels'][i]))
+		labelIdx = list(f['species_labels'][i]).index(max(f['species_labels'][i]))
 		writer.writerow([labelIdx,label_set[labelIdx]])
 
 	f.close()
@@ -176,12 +176,12 @@ def getPredictions(model_name,model_dir,testdata_file,label_names):
 	dropout1 = graph.get_tensor_by_name("dropout_1/keras_learning_phase:0")
 	opt = graph.get_tensor_by_name('representation/Relu:0')
 	# preds = graph.get_tensor_by_name('dense_1/Softmax:0')
-	preds = graph.get_tensor_by_name('dense_1/Sigmoid:0')
+	preds = graph.get_tensor_by_name('dense_1/Softmax:0')
 
 	# load test data
 	f = h5py.File(testdata_file,'r')
 	test_dat = f['dnaseq'][0:10000]
-	test_labels = f['GO_labels'][0:10000]
+	test_labels = f['species_labels'][0:10000]
 
 	# run session and get output of representational layer
 	feed_dict = {dna: test_dat, labels: test_labels, dropout1: 0}
@@ -434,12 +434,12 @@ def GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4):
 # model_dir = 'results/saved_models/sCer_cEleg_Mouse_Human/'
 # testdata_file = 'data/h5datasets/sCer_cEleg_Mouse_Human/validation.h5'
 
-# label_names = ['sCer','cEleg','Mouse','Human']
-label_names = ['ox','hypox','ER','starv']
-model_name = 'MamGO4stress_model'
-model_dir = ''
-testdata_file = 'data/h5datasets_GO/MamGO4stress/validation.h5'
-a = getPredictions(model_name,model_dir,testdata_file,label_names)
+# # label_names = ['sCer','cEleg','Mouse','Human']
+# label_names = ['ox','hypox','ER','starv']
+# model_name = 'MamGO4stress_model'
+# model_dir = ''
+# testdata_file = 'data/h5datasets_GO/MamGO4stress/validation.h5'
+# a = getPredictions(model_name,model_dir,testdata_file,label_names)
 # print a[1]
 # a = get_representations(model_name,model_dir,testdata_file)
 
@@ -449,7 +449,7 @@ a = getPredictions(model_name,model_dir,testdata_file,label_names)
 
 
 # write_metadata(['sCer','sBoul','sArb','sEub'],'new2_Sac4','validation.h5')
-# write_metadata(['sCer','cEleg','Mouse','Human'],'new2_all4','validation.h5')
+write_metadata(['sCer','cEleg','Mouse','Human'],'all4Limit','validation.h5')
 # write_metadataGO(['stress','cell_cycle','chromosome_org','cell_loc','kinase','pyrophos','multiple'],'new_sCer_6GO')
 # write_metadataGO(['stress','cc','chr_org','multiple'],'new_sCer_stress+cc+chrorg')
 

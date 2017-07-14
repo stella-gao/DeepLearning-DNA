@@ -7,7 +7,7 @@ promoter_length = 500
 window_step = 20
 
 def combine_GOterms(species,species_list,ontology_terms,upstream_length,\
-		promoter_length,window_step,sampling_method=1,random_sample=True,balance=False):
+		promoter_length,window_step,sampling_method=1,random_sample=False,balance=False):
 
 	seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
 	    sp in species]
@@ -65,11 +65,11 @@ def combine_GOterms(species,species_list,ontology_terms,upstream_length,\
 		# get windows, labels, species+gene names for training, validation data
 		train_dat,train_labels,train_genelist = \
 			multilabelWindows(seq_dicts,train_geneterm_dict,\
-			ontology_terms,promoter_length,window_step,random_sample)
+			ontology_terms,promoter_length,window_step,random_sample,20)
 
 		validation_dat,validation_labels,validation_genelist = \
 			multilabelWindows(seq_dicts,val_geneterm_dict,\
-			ontology_terms,promoter_length,window_step,random_sample)
+			ontology_terms,promoter_length,window_step,random_sample,20)
 
 		if random_sample:
 			print('shuffling to create random sequences...')
@@ -153,11 +153,13 @@ def convertLabels(labels):
 # random_sample = True
 
 random_sample = False
+# ontology_terms = ['translation','cell_cycleP']
 ontology_terms = ['skeletal','multicell_dev']
 species = ['Human']
 species_list = ['sapien']
-# combine_GOterms(species,species_list,ontology_terms,upstream_length,\
-# 		promoter_length,window_step,2,random_sample,balance=True)
+
+combine_GOterms(species,species_list,ontology_terms,upstream_length,\
+		promoter_length,window_step,2,random_sample,balance=False)
 
 
 
@@ -196,9 +198,9 @@ def rewriteHDF5_GO2(h5_file,dir_name): # multi-label binary encoding
 	f.close()
 	g.close()
 
-dir_name = 'data/h5datasets_GO/Human_skel_multidev/'
-rewriteHDF5_GO2('train.h5',dir_name)
-rewriteHDF5_GO2('validation.h5',dir_name)
+# dir_name = 'data/h5datasets_GO/Human_skel_multidev/'
+# rewriteHDF5_GO2('train.h5',dir_name)
+# rewriteHDF5_GO2('validation.h5',dir_name)
 
 # dir_name = 'data/h5datasets_GO/new_sCer_6GO/'
 # rewriteHDF5_GO('train.h5',dir_name)

@@ -274,7 +274,8 @@ def getallWindows(seq_dict,window_size,step_size,concat=True):
 
     return np.array(all_dat), gene_list
 
-def multilabelWindows(seq_dicts,geneterm_dict,ontology_list,window_size,step_size,random_sample):
+def multilabelWindows(seq_dicts,geneterm_dict,ontology_list,window_size,step_size,\
+    random_sample,limit=False):
     '''generates windows for all sequences represented in both the sequence
     dictionaries and the gene ontology dictionaries; also returns the
     corresponding non-mutually exclusive labels to each of the windows and the
@@ -291,6 +292,7 @@ def multilabelWindows(seq_dicts,geneterm_dict,ontology_list,window_size,step_siz
     gene_list = []
     allWindows = []
     allLabels = []
+
     for species_gene_name in geneterm_dict:
 
         name = species_gene_name.split('~')
@@ -304,14 +306,25 @@ def multilabelWindows(seq_dicts,geneterm_dict,ontology_list,window_size,step_siz
             if gene in seq_dicts[species]:
                 windows = slideWindow(seq_dicts[species][gene],\
                     window_size,step_size)
+                if limit:
+                    windowIdx = np.random.choice(range(len(windows)),limit)
+                    windows = [windows[i] for i in windowIdx]
                 allWindows.extend(windows)
+
             elif gene.lower() in seq_dicts[species]:
                 windows = slideWindow(seq_dicts[species][gene.lower()],\
                     window_size,step_size)
+                if limit:
+                    windowIdx = np.random.choice(range(len(windows)),limit)
+                    windows = [windows[i] for i in windowIdx]
                 allWindows.extend(windows)
+
             elif gene.upper() in seq_dicts[species]:
                 windows = slideWindow(seq_dicts[species][gene.upper()],\
                     window_size,step_size)  
+                if limit:
+                    windowIdx = np.random.choice(range(len(windows)),limit)
+                    windows = [windows[i] for i in windowIdx]
                 allWindows.extend(windows) 
 
             gene_count += 1
