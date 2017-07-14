@@ -29,7 +29,7 @@ validation_h5file = 'data/h5datasets_GO/' + str(species_dir) + '/validation.h5'
 promoter_length = 500
 
 # training parameters
-epochs = 30
+epochs = 20
 batch_size = 200
 
 # CNN hyperparameters
@@ -68,15 +68,34 @@ labels = tf.placeholder(tf.float32,shape=(None,num_GOterms),name='label')
 # build layers of network
 conv1 = Conv2D(num_filters,[filter_height1,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_1')(dna)
-pool1 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
+pool1 = AvgPooling2D((1,pool_size),strides=(1,pool_stride),\
             name='AvgPool_1')(conv1)
 drop1 = Dropout(0.5)(pool1)
 conv2 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_2')(drop1)
-pool2 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+pool2 = AvgPooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
             name='AvgPool_2')(conv2)
 drop2 = Dropout(0.5)(pool2)
-flat = Flatten()(drop2)
+
+conv3 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
+            kernel_regularizer='l2',padding='valid',name='conv_2')(drop2)
+pool3 = AvgPooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+            name='AvgPool_2')(conv3)
+drop3 = Dropout(0.5)(pool3)
+
+conv4 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
+            kernel_regularizer='l2',padding='valid',name='conv_2')(drop3)
+pool4 = AvgPooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+            name='AvgPool_2')(conv4)
+drop4 = Dropout(0.5)(pool4)
+
+conv5 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
+            kernel_regularizer='l2',padding='valid',name='conv_2')(drop4)
+pool5 = AvgPooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+            name='AvgPool_2')(conv5)
+drop5 = Dropout(0.5)(pool5)
+
+flat = Flatten()(drop5)
 FC = Dense(50,activation='relu',name='representation')(flat)
 
 preds_list = [Dense(2,activation='softmax')(FC) for i in range(num_GOterms)]
@@ -101,8 +120,7 @@ train_step = tf.train.AdamOptimizer(learning_rate=learning_rate). \
 # exactmatch = tf.reduce_mean(tf.cast(match,tf.float32))
 match = 0
 for i in range(num_GOterms):
-    match += tf.cast(tf.equal(float(2),tf.reduce_sum(tf.cast(tf.equal(labels_list[i], \
-        preds_list[i]),tf.float32),axis=1)),tf.float32)
+    match += tf.cast(tf.equal(tf.argmax(preds_list[i], 1), tf.argmax(labels_list[i], 1)),tf.float32)
 exactmatch = tf.reduce_mean(tf.cast(tf.equal(float(num_GOterms),match),tf.float32))
 
 # binary accuracy
@@ -160,8 +178,10 @@ with sess.as_default():
     saver.save(sess,species_dir + '_model')
 
     # get representational output 
-    rep_layer = sess.run(FC,feed_dict={dna: validation_dat, \
-        labels: validation_labels,K.learning_phase(): 0})
+    val_feed_dict = {labels_list[i]: validation_labels[:,i] for i in range(num_GOterms)}
+    val_feed_dict.update({dna: validation_dat, K.learning_phase(): 0})
+
+    rep_layer = sess.run(FC,feed_dict=val_feed_dict)
 
     # write representational output to file
     np.savetxt(species_dir + '_rep.txt',rep_layer,delimiter='\t')

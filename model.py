@@ -63,7 +63,7 @@ def shuffle_onehotseq(onehot_dnaseq):
 
     return np.array(shuffledSeq)
 
-def read_fasta_seq(file_name):
+def read_fasta_seq(file_name,gene_list=None):
     '''reads in a file of promoter sequences in FASTA format and returns a 
     dictionary of one-hot encoded DNA sequences indexed by gene name'''
 
@@ -77,10 +77,19 @@ def read_fasta_seq(file_name):
         seq = ''
         for line in reader:
             if len(line) > 1:
-                # one hot encode completed sequence if sufficiently low 
-                # number of "N"
-                if seq.count('N') <= 0.2*len(seq) and len(seq) > 0:
-                    seq_dict[gene_name.lower()] = one_hot_encode_sequence(seq)
+                # only include sequence if corresponding gene in gene list
+                if gene_list:
+                    if gene_name in gene_list or gene_name.lower() in \
+                        gene_list or gene_name.upper() in gene_list:
+                        if seq.count('N') <= 0.2*len(seq) and len(seq) > 0: 
+                            seq_dict[gene_name.lower()] = \
+                                one_hot_encode_sequence(seq)
+                else:
+                    # one hot encode completed sequence if sufficiently low 
+                    # number of "N"
+                    if seq.count('N') <= 0.2*len(seq) and len(seq) > 0:
+                        seq_dict[gene_name.lower()] = \
+                            one_hot_encode_sequence(seq)
 
                 # read in header of new sequence
                 gene_name = line[1]
@@ -389,6 +398,34 @@ def getGOterms(infile,species_list):
     f.close()
 
     return {species: list(set(GO_dict[species])) for species in GO_dict.keys()}
+
+def getGOterms_all(infile,species_namelist,ontology_terms):
+    '''reads in a file downloaded from AmiGO2 and returns a dictionary of 
+    dictionary of genes indexed by species name indexed by ontology terms;
+    also returns a list of genes associated with each species'''
+
+    f = open(infile,'r')
+    reader = csv.reader(f,delimiter='\t')
+
+    species_genedict = {species: [] for species in species_namelist}
+    GO_dicts = {GOterm: {species: [] for species in species_namelist} for \
+        GOterm in ontology_terms}
+
+    for line in reader:
+        if line[3] in ontology_terms:
+            for species in species_namelist:
+                GOterm = line[3]
+                if species in line[1] and line[2].lower() not in GO_dicts[GOterm][species]:
+                    GO_dicts[GOterm][species].append(line[2].lower())
+                    species_genedict[species].append(line[2].lower())
+
+    f.close()
+
+    species_genedict = {species: list(set(species_genedict[species])) for \
+        species in species_genedict}
+
+    return GO_dicts, species_genedict
+
 
 def combineGOseq(seq_dicts,GO_dicts):
     '''integrates GO term-gene dictionaries with gene-sequence dictionaries

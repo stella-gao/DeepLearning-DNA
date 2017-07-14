@@ -106,11 +106,37 @@ def writeSequence(seq_dict,outfile_name):
     f.close()
 
 
-species = 'Human'
+species = 'sArb'
 ann_file = 'data/annotation_files/' + species + '.gtf.gz'
-genomedat_dir = 'data/genome_files/' + 'Human_unmasked' # species
+genomedat_dir = 'data/genome_files/' + species
 promoter_length = 1000
 
 annot_dict = read_gtf(ann_file)
 seq_dict = readSequences(annot_dict,genomedat_dir,promoter_length)
 writeSequence(seq_dict,species + str(promoter_length) + '.fa.txt')
+
+
+def one_hot_encode_sequence(seq):
+    '''converts a DNA sequence into its corresponding one-hot encoding 
+    representation'''
+
+    seq = [x.lower() for x in seq]
+
+    result = [[],[],[],[]]
+
+    bps = ['a','t','c','g']
+    for i in range(len(seq)):
+        if seq[i] == 'n':
+            for j in range(len(bps)):
+                result[j].append(np.array([0.25]))
+        else:
+            for j in range(len(bps)):
+                if seq[i] == bps[j]:
+                    result[j].append(np.array([1.]))
+                else:
+                    result[j].append(np.array([0.]))
+    result = [np.array(x) for x in result]
+    if len(result[0]) < 50:
+        print(seq)
+    return np.array(result)
+

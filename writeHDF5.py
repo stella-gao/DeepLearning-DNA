@@ -85,8 +85,8 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 		# stratify data into training and validation data
 		allIdx = range(len(mat))
 		np.random.shuffle(allIdx)
-		trainIdx = allIdx[0:int(0.8*len(mat))]
-		valIdx = allIdx[int(0.8*len(mat)):]
+		trainIdx = allIdx[0:int(0.9*len(mat))]
+		valIdx = allIdx[int(0.9*len(mat)):]
 
 		train_genes = [gene_list[i] for i in trainIdx]
 		train_dat = np.array([mat[i] for i in trainIdx])
@@ -179,12 +179,12 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 			train_dat = np.concatenate([train_dat,random_train])
 			train_genes.extend(['random' for i in range(random_trainsize)])
 
-			random_val = validation_dat[np.random.choice(range(validation_dat.shape[0]),\
-				random_valsize)]
-			random_val = np.array([shuffle_onehotseq(random_val[i]) for \
-				i in range(random_val.shape[0])])
-			validation_dat = np.concatenate([validation_dat,random_val])
-			validation_genes.extend(['random' for i in range(random_valsize)])
+			# random_val = validation_dat[np.random.choice(range(validation_dat.shape[0]),\
+			# 	random_valsize)]
+			# random_val = np.array([shuffle_onehotseq(random_val[i]) for \
+			# 	i in range(random_val.shape[0])])
+			# validation_dat = np.concatenate([validation_dat,random_val])
+			# validation_genes.extend(['random' for i in range(random_valsize)])
 
 		# shuffle training data (to randomize batch-species pairs)
 		train_shuffleIdx = range(train_dat.shape[0])

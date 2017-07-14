@@ -92,6 +92,27 @@ def filterLabels(representation_file,metadata_file,index_set,output_file):
 	f.close()
 	g.close()
 
+### GO TERM DATA ##############################################################
+
+def getGOcounts(infile,species):
+	'''returns a list of tuples containing GO terms associated with the inputted 
+	species and their respective counts'''
+
+	from collections import Counter
+	import operator
+
+	f = open(infile,'r')
+	reader = csv.reader(f,delimiter='\t')
+
+	GOterm_list = []
+	for line in reader:
+		if species in line[1]:
+			GOterm_list.append(line[3])
+
+	counts = Counter(GOterm_list)
+
+	return sorted(counts.items(), key=operator.itemgetter(1))
+
 ### CNN LAYER OUTPUTS #########################################################
 
 def get_representations(model_name,model_dir,testdata_file,write2file=False):

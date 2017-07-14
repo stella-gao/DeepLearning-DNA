@@ -49,7 +49,7 @@ def combine_speciesGO(species,species_names,ontology_terms,upstream_length,\
 
 	# isolate genes to be included in training and validation datasets
 	train_geneterms = list(np.random.choice(geneterm_dict.keys(),\
-		int(len(geneterm_dict)*0.8),replace=False))
+		int(len(geneterm_dict)*0.9),replace=False))
 	validation_geneterms = [geneterm for geneterm in geneterm_dict.keys() \
 		if geneterm not in train_geneterms]
 
@@ -126,7 +126,7 @@ def combine_speciesGO2(species,species_names,GO_file,ontology_terms,upstream_len
 
 	# isolate genes to be included in training and validation datasets
 	train_geneterms = list(np.random.choice(geneterm_dict.keys(),\
-		int(len(geneterm_dict)*0.8),replace=False))
+		int(len(geneterm_dict)*0.9),replace=False))
 	validation_geneterms = [geneterm for geneterm in geneterm_dict.keys() \
 		if geneterm not in train_geneterms]
 
@@ -196,60 +196,3 @@ combine_speciesGO2(species,species_names,GO_file,ontology_terms,upstream_length,
 
 # combine_speciesGO(species,species_names,ontology_terms,upstream_length,\
 # 		promoter_length,window_step)
-
-# seq_files = ['data/my_promoters/' + sp + str(upstream_length) + '.fa.txt' for \
-#     sp in species]
-# ontology_files = ['data/GOterms/' + GOterm + '.txt' for GOterm in ontology_terms]
-
-# # read in promoter sequences and convert to one-hot encoding sequences
-# seq_dicts = {species_names[i]:read_fasta_seq(seq_files[i]) for i \
-#     in range(len(species_names))}
-
-# # read in GO terms and corresponding genes for each species
-# GO_dicts = {ontology_terms[i]:getGOterms(ontology_files[i],species_names) \
-#     for i in range(len(ontology_files))}
-
-# # creates a dictionary of ontologies indexed by species+gene names
-# geneterm_dict = geneGO_dict(GO_dicts)
-
-# # isolate genes to be included in training and validation datasets
-# train_geneterms = list(np.random.choice(geneterm_dict.keys(),\
-# 	int(len(geneterm_dict)*0.8),replace=False))
-# validation_geneterms = [geneterm for geneterm in geneterm_dict.keys() \
-# 	if geneterm not in train_geneterms]
-
-# train_geneterm_dict = {key:geneterm_dict[key] for key in geneterm_dict.keys() \
-# 	if key in train_geneterms}
-# val_geneterm_dict = {key:geneterm_dict[key] for key in geneterm_dict.keys() \
-# 	if key in validation_geneterms}
-
-# # get windows, labels, species+gene names for training, validation data
-# train_dat,train_labels,train_genelist = \
-# 	multilabelWindows(seq_dicts,train_geneterm_dict,\
-# 	ontology_terms,promoter_length,window_step)
-
-# validation_dat,validation_labels,validation_genelist = \
-# 	multilabelWindows(seq_dicts,val_geneterm_dict,\
-# 	ontology_terms,promoter_length,window_step)
-
-# # shuffle training data (to randomize batch-species pairs)
-# train_shuffleIdx = range(train_dat.shape[0])
-# np.random.shuffle(train_shuffleIdx)
-# train_dat = train_dat[np.array(train_shuffleIdx)]
-# train_labels = [train_labels[i] for i in train_shuffleIdx]
-# train_genelist = [train_genelist[i] for i in train_shuffleIdx]
-
-# # shuffle validation data (to randomize species+gene order)
-# val_shuffleIdx = range(validation_dat.shape[0])
-# np.random.shuffle(val_shuffleIdx)
-# validation_dat = validation_dat[np.array(val_shuffleIdx)]
-# validation_labels = [validation_labels[i] for i in val_shuffleIdx]
-# validation_genelist = [validation_genelist[i] for i in val_shuffleIdx]
-
-# # separate species from species+gene lists in training, validation data
-# train_specieslist = [n.split('~')[0] for n in train_genelist]
-# validation_specieslist = [n.split('~')[0] for n in validation_genelist]
-
-# # create one-hot encoded species labels for training, validation data
-# train_specieslabels = species2labels(species_names,train_specieslist)
-# validation_specieslabels = species2labels(species_names,validation_specieslist)

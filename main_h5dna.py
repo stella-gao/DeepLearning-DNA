@@ -23,7 +23,7 @@ from keras.utils.io_utils import HDF5Matrix
 from sklearn.metrics import hamming_loss
 
 species_dir = str(sys.argv[1])
-print(species_dir)
+print(species_dir + ' 2-branched convolution')
 train_h5file = 'data/h5datasets/' + str(species_dir) + '/train.h5'
 validation_h5file = 'data/h5datasets/' + str(species_dir) + '/validation.h5'
 promoter_length = 500
@@ -48,7 +48,7 @@ train_batcher = train_data.batcher()
 
 # read in HDF5 file for validation data
 validation_file = h5py.File(validation_h5file,'r')
-val_datsize = min(10000,validation_file.values()[0].shape[0])
+val_datsize = min(5000,validation_file.values()[0].shape[0])
 validation_dat = validation_file['dnaseq'][0:val_datsize]
 validation_labels = validation_file['species_labels'][0:val_datsize]
 
@@ -65,19 +65,57 @@ dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='dna')
 # define placeholder for species labels
 labels = tf.placeholder(tf.float32,shape=(None,num_species),name='label')
 
-# build layers of network
+# build regular convolution branch in network (2 convolutional layers)
 conv1 = Conv2D(num_filters,[filter_height1,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_1')(dna)
-pool1 = MaxPooling2D((1,pool_size),strides=(1,pool_stride),\
-            name='MaxPool_1')(conv1)
+pool1 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
+            name='AvgPool_1')(conv1)
 drop1 = Dropout(0.5)(pool1)
+
 conv2 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_2')(drop1)
-pool2 = MaxPooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-            name='MaxPool_2')(conv2)
+pool2 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+            name='AvgPool_2')(conv2)
 drop2 = Dropout(0.5)(pool2)
-flat = Flatten()(drop2)
-FC = Dense(50,activation='relu',name='representation')(flat)
+
+conv3 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
+            kernel_regularizer='l2',padding='valid',name='conv_3')(drop2)
+pool3 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+            name='AvgPool_3')(conv3)
+drop3 = Dropout(0.5)(pool3)
+
+flat1 = Flatten()(drop3)
+FC1 = Dense(1000,activation='relu')(flat1)
+
+# build dilated convolution branch in network (1 convolutional layer)
+convDil1 = Conv2D(num_filters,[filter_height1,filter_width],activation='relu', \
+    dilation_rate=(1,2), kernel_regularizer='l2',padding='valid',name='convDil_1')(dna)
+poolDil1 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
+            name='AvgPoolDil_1')(convDil1)
+dropDil1 = Dropout(0.5)(poolDil1)
+
+convDil2 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
+    dilation_rate=(1,4), kernel_regularizer='l2',padding='valid',name='convDil_2')(dropDil1)
+poolDil2 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
+            name='AvgPoolDil_2')(convDil2)
+dropDil2 = Dropout(0.5)(poolDil2)
+
+convDil3 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
+    dilation_rate=(1,8), kernel_regularizer='l2',padding='valid',name='convDil_3')(dropDil2)
+poolDil3 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
+            name='AvgPoolDil_3')(convDil3)
+dropDil3 = Dropout(0.5)(poolDil3)
+
+flatDil1 = Flatten()(dropDil3)
+
+FCDil1 = Dense(1000,activation='relu')(flatDil1)
+
+# stack fully-connected layer outputs from regular and dilated convolution
+stacked_layers = tf.reshape(tf.concat([FC1,FCDil1],1),shape = [-1,2,1000,1])
+# flatten stacked layers
+stacked_layers = Flatten()(stacked_layers)
+
+FC = Dense(50,activation='relu',name='representation')(stacked_layers)
 preds = Dense(num_species,activation='softmax')(FC)
 
 # loss function
@@ -112,7 +150,7 @@ with sess.as_default():
             labels: batch['species_labels'], K.learning_phase(): 1})
 
         # log training and validation accuracy
-        if i%1000 == 0:
+        if i%100 == 0:
 
             epoch_num = i/train_size*batch_size
 
