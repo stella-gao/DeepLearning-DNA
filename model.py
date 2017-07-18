@@ -254,7 +254,7 @@ def slideWindow(onehot_seq,window_size,step_size):
 
     return all_windows
 
-def getallWindows(seq_dict,window_size,step_size,concat=True):
+def getallWindows(seq_dict,window_size,step_size,concat=True,num_windows=False):
     '''uses the sliding window approach to get windows for all DNA regions
     represented in an inputted dictionary of sequences sorted alphabetically
     by DNA region name/gene name'''
@@ -264,6 +264,10 @@ def getallWindows(seq_dict,window_size,step_size,concat=True):
 
     for reg in sorted(seq_dict):
         reg_windows = slideWindow(seq_dict[reg],window_size,step_size)
+        if num_windows:
+            windowIdx = np.random.choice(range(len(reg_windows)),num_windows,replace=False)
+            reg_windows = [reg_windows[i] for i in windowIdx]
+
         all_dat.append(reg_windows)
         gene_list.extend([reg for i in range(len(reg_windows))])
 

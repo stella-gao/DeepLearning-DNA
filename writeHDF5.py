@@ -99,7 +99,7 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 	else: # ensure all genes are represented! (different # of windows/gene/species)
 		print('creating windows...')
 		gene_windows = [getallWindows(seq_dict,promoter_length,window_step,\
-			concat=False) for seq_dict in seq_dicts]
+			concat=False,num_windows=10) for seq_dict in seq_dicts]
 		windows = [wind for wind,gene in gene_windows]
 		gene_list = [[gene for gene in sorted(seq_dict)] for seq_dict in seq_dicts]
 
@@ -107,7 +107,7 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 		min_datsize = min([len(gene_window[1]) for gene_window in gene_windows])
 
 		# determine number of windows per gene to select for each species
-		train_num_windows_per_gene = [min(15,int(float(min_datsize)/len(seq_dict.keys()))) \
+		train_num_windows_per_gene = [min(10,int(float(min_datsize)/len(seq_dict.keys()))) \
 			for seq_dict in seq_dicts]
 		val_num_windows_per_gene = [int(float(min_datsize)/len(seq_dict.keys())) \
 			for seq_dict in seq_dicts]
@@ -263,6 +263,28 @@ def combine_species_allgenes(species_list,upstream_length,promoter_length):
 	f.create_dataset('genes',data=gene_list,dtype=dt,compression='gzip')
 	f.close()
 
+def filterDatabySpeciesLabel(h5_file,outfile,inds_to_keep):
+	'''identifies the data stored in an H5 file that correspond to an inputted 
+	set of desired label indices and writes this filtered data to another H5 
+	file (Ex: include only dnaseq/genes from species labels with 1s at indices
+	0 and 1)'''
+
+	f = h5py.File(h5_file,'r')
+	g = h5py.File(outfile,'w')
+
+	dt = h5py.special_dtype(vlen=unicode)
+
+	dataIdx = np.array([i for i in range(f['species_labels'].shape[0]) if \
+		sum(f['species_labels'][i][np.array(inds_to_keep)]) > 0])
+
+	g.create_dataset('dnaseq',data=f['dnaseq'][:][dataIdx],dtype='f',compression='gzip')
+	g.create_dataset('species_labels',data=f['species_labels'][:][dataIdx],dtype='f',compression='gzip')
+	g.create_dataset('genes',data=f['genes'][:][dataIdx],dtype=dt,compression='gzip')
+	g.create_dataset('species',data=f['species'][:][dataIdx],dtype=dt,compression='gzip')
+
+	f.close()
+	g.close()
+
 
 def rewriteHDF5(h5_file,dir_name):
 
@@ -272,12 +294,17 @@ def rewriteHDF5(h5_file,dir_name):
 	dt = h5py.special_dtype(vlen=unicode)
 
 	g.create_dataset('dnaseq',data=f['dnaseq'][:],dtype='f',compression='gzip')
-	g.create_dataset('species_label',data=f['labels'][:],dtype='f',compression='gzip')
+	g.create_dataset('species_labels',data=f['labels'][:],dtype='f',compression='gzip')
 	g.create_dataset('genes',data=f['genes'][:],dtype=dt,compression='gzip')
 	g.create_dataset('species',data=f['species'][:],dtype=dt,compression='gzip')
 
 	f.close()
 	g.close()
+
+# h5_file = 'data/h5datasets/all4_unmasked/train.h5'
+# outfile = 'data/h5datasets/all4_unmasked/train_sCer_cEleg.h5'
+# inds_to_keep = [0,1]
+# filterDatabySpeciesLabel(h5_file,outfile,inds_to_keep)
 
 # dir_name = 'data/h5datasets/new2_all4/'
 # rewriteHDF5('train.h5',dir_name)
@@ -291,7 +318,7 @@ upstream_length = 1000
 promoter_length = 500
 window_step = 20
 
-species_list = ['sCer','cEleg','Mouse','Human']
+species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','sBoul']
 combine_species(species_list,upstream_length,promoter_length,window_step,3,False)
 
 # species_list = ['sCer','sPom']

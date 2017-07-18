@@ -194,7 +194,8 @@ def getPredictions(model_name,model_dir,testdata_file,label_names):
 
 	f.close()
 
-	return predictions,confusion_matrix(truelabel_names,prediction_names)
+	return predictions,confusion_matrix(truelabel_names,prediction_names,\
+		labels=label_names)
 
 ### FEATURE IMPORTANCE VIA GRADIENTS ##########################################
 
@@ -409,7 +410,12 @@ def GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4):
 # loaded_model = model_from_json(loaded_model_json)
 # loaded_model.load_weights('sCer_dHansmodel.h5')
 
-# import deeplift.conversion.keras_conversion as kc
+# sess = tf.Session()
+# saver = tf.train.import_meta_graph(model_dir + model_name + '.meta')
+# saver.restore(sess,'./' + model_dir + model_name)
+
+# graph = tf.get_default_graph()
+	
 
 # keras_model_weights = 'sCer_dHansmodel.h5'
 # keras_model_json = 'sCer_dHansmodel.json'
@@ -448,8 +454,8 @@ def GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4):
 # d = np.loadtxt('sCer_sPom_rep.txt',delimiter='\t')
 
 
-# write_metadata(['sCer','sBoul','sArb','sEub'],'new2_Sac4','validation.h5')
-write_metadata(['sCer','cEleg','Mouse','Human'],'all4Limit','validation.h5')
+# write_metadata(['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','sBoul'],'all8','validation.h5')
+# write_metadata(['sCer','cEleg','Mouse','Human'],'all4_unmasked','validation.h5')
 # write_metadataGO(['stress','cell_cycle','chromosome_org','cell_loc','kinase','pyrophos','multiple'],'new_sCer_6GO')
 # write_metadataGO(['stress','cc','chr_org','multiple'],'new_sCer_stress+cc+chrorg')
 

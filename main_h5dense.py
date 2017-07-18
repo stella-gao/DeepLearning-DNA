@@ -15,7 +15,6 @@ import tensorflow as tf
 from keras import backend as K
 from keras.models import Sequential
 from keras.layers import Input, Dense, Lambda, Conv2D, concatenate, Reshape, AveragePooling2D, MaxPooling2D, Flatten, Dropout
-from keras.layers.advanced_activations import LeakyReLU
 from keras.metrics import categorical_accuracy
 from keras.objectives import categorical_crossentropy
 from keras.optimizers import Adam
@@ -67,26 +66,32 @@ dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='dna')
 labels = tf.placeholder(tf.float32,shape=(None,num_species),name='label')
 
 # build layers of network
-conv1 = Conv2D(num_filters,[filter_height1,filter_width],activation='linear', \
+conv1 = Conv2D(num_filters,[filter_height1,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_1')(dna)
-leak1 = LeakyReLU(alpha=.001)(conv1)
 pool1 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
-            name='AvgPool_1')(leak1)
+            name='AvgPool_1')(conv1)
 drop1 = Dropout(0.5)(pool1)
+print(drop1)
 
-conv2 = Conv2D(num_filters,[filter_height2,filter_width],activation='linear', \
+# # concatenate outputs of convolutional layers
+# dense_block1 = tf.reshape(tf.concat([dna,pool1],1),shape = [-1,5,500,1])
+
+conv2 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_2')(drop1)
-leak2 = LeakyReLU(alpha=.001)(conv2)
 pool2 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-            name='AvgPool_2')(leak2)
+            name='AvgPool_2')(conv2)
 drop2 = Dropout(0.5)(pool2)
+print(drop2)
+# # concatenate outputs of convolutional layers
+# input1 = tf.reshape(tf.concat([input1,drop2],1),shape = [-1,6,500,1])
 
-conv3 = Conv2D(num_filters,[filter_height2,filter_width],activation='linear', \
-            kernel_regularizer='l2',padding='valid',name='conv_3')(drop2)
-leak3 = LeakyReLU(alpha=.001)(conv3)
+conv3 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
+            kernel_regularizer='l2',padding='valid',name='conv_3')(drop1)
 pool3 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-            name='AvgPool_3')(leak3)
+            name='AvgPool_3')(conv2)
 drop3 = Dropout(0.5)(pool3)
+print(drop3)
+
 flat = Flatten()(drop3)
 FC = Dense(50,activation='relu',name='representation')(flat)
 preds = Dense(num_species,activation='softmax')(FC)

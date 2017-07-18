@@ -30,7 +30,7 @@ promoter_length = 500
 
 # training parameters
 epochs = 20
-batch_size = 200
+batch_size = 20
 
 # CNN hyperparameters
 num_filters = 50
@@ -57,13 +57,10 @@ validation_labels = validation_file['GO_labels'][0:val_datsize]
 #         write_graph=True, write_images=True)
 
 train_size = train_file.values()[0].shape[0]
-num_GOterms = train_file['GO_labels'].shape[1]
+num_GOterms = 1 #train_file['GO_labels'].shape[1]
 
 # define placeholder for DNA sequences (represented via one-hot encoding)
 dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='dna')
-
-# define placeholder for species labels
-labels = tf.placeholder(tf.float32,shape=(None,num_GOterms),name='label')
 
 # build layers of network
 conv1 = Conv2D(num_filters,[filter_height1,filter_width],activation='relu', \
@@ -83,22 +80,24 @@ pool3 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', 
             name='AvgPool_2')(conv3)
 drop3 = Dropout(0.5)(pool3)
 
-conv4 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
-            kernel_regularizer='l2',padding='valid',name='conv_2')(drop3)
-pool4 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-            name='AvgPool_2')(conv4)
-drop4 = Dropout(0.5)(pool4)
+# conv4 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
+#             kernel_regularizer='l2',padding='valid',name='conv_2')(drop3)
+# pool4 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+#             name='AvgPool_2')(conv4)
+# drop4 = Dropout(0.5)(pool4)
 
-conv5 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
-            kernel_regularizer='l2',padding='valid',name='conv_2')(drop4)
-pool5 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-            name='AvgPool_2')(conv5)
-drop5 = Dropout(0.5)(pool5)
+# conv5 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
+#             kernel_regularizer='l2',padding='valid',name='conv_2')(drop4)
+# pool5 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+#             name='AvgPool_2')(conv5)
+# drop5 = Dropout(0.5)(pool5)
 
-flat = Flatten()(drop5)
+flat = Flatten()(drop3)
 FC = Dense(50,activation='relu',name='representation')(flat)
 
 preds_list = [Dense(2,activation='softmax')(FC) for i in range(num_GOterms)]
+
+# define placeholders for 
 labels_list = [tf.placeholder(tf.float32,[None,2]) for i in range(num_GOterms)]
 
 total_loss = 0

@@ -30,7 +30,7 @@ promoter_length = 500
 
 # training parameters
 epochs = 30
-batch_size = 100
+batch_size = 20
 
 # CNN hyperparameters
 num_filters = 50
@@ -65,51 +65,57 @@ dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='dna')
 # define placeholder for species labels
 labels = tf.placeholder(tf.float32,shape=(None,num_GOterms),name='label')
 
-# build layers of network
+# build regular convolution branch in network (2 convolutional layers)
 conv1 = Conv2D(num_filters,[filter_height1,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_1')(dna)
-leak1 = LeakyReLU(alpha=.001)(conv1)            
 pool1 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
-            name='MaxPool_1')(leak1)
+            name='AvgPool_1')(conv1)
 drop1 = Dropout(0.5)(pool1)
-###
+
 conv2 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_2')(drop1)
-leak2 = LeakyReLU(alpha=.001)(conv2)
 pool2 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-            name='MaxPool_2')(leak2)
+            name='AvgPool_2')(conv2)
 drop2 = Dropout(0.5)(pool2)
-###
+
 conv3 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
             kernel_regularizer='l2',padding='valid',name='conv_3')(drop2)
-leak3 = LeakyReLU(alpha=.001)(conv3)
 pool3 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-            name='AvgPool_3')(leak3)
+            name='AvgPool_3')(conv3)
 drop3 = Dropout(0.5)(pool3)
-# ###
-# conv4 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
-#             kernel_regularizer='l2',padding='valid',name='conv_2')(drop3)
-# leak4 = LeakyReLU(alpha=.001)(conv4)
-# pool4 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-#             name='AvgPool_4')(conv4)
-# drop4 = Dropout(0.5)(pool4)
-# ###
-# conv5 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
-#             kernel_regularizer='l2',padding='valid',name='conv_2')(drop4)
-# leak5 = LeakyReLU(alpha=.001)(conv5)
-# pool5 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-#             name='AvgPool_4')(conv5)
-# drop5 = Dropout(0.5)(pool5)
-# ###
-# conv6 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
-#             kernel_regularizer='l2',padding='valid',name='conv_2')(drop5)
-# leak6 = LeakyReLU(alpha=.001)(conv6)
-# pool6 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-#             name='AvgPool_4')(conv6)
-# drop6 = Dropout(0.5)(pool6)
 
-flat = Flatten()(drop6)
-FC = Dense(50,activation='relu',name='representation')(flat)
+flat1 = Flatten()(drop3)
+FC1 = Dense(1000,activation='relu')(flat1)
+
+# build dilated convolution branch in network (1 convolutional layer)
+convDil1 = Conv2D(num_filters,[filter_height1,filter_width],activation='relu', \
+    dilation_rate=(1,2), kernel_regularizer='l2',padding='valid',name='convDil_1')(dna)
+poolDil1 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
+            name='AvgPoolDil_1')(convDil1)
+dropDil1 = Dropout(0.5)(poolDil1)
+
+convDil2 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
+    dilation_rate=(1,4), kernel_regularizer='l2',padding='valid',name='convDil_2')(dropDil1)
+poolDil2 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
+            name='AvgPoolDil_2')(convDil2)
+dropDil2 = Dropout(0.5)(poolDil2)
+
+convDil3 = Conv2D(num_filters,[filter_height2,filter_width],activation='relu', \
+    dilation_rate=(1,8), kernel_regularizer='l2',padding='valid',name='convDil_3')(dropDil2)
+poolDil3 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
+            name='AvgPoolDil_3')(convDil3)
+dropDil3 = Dropout(0.5)(poolDil3)
+
+flatDil1 = Flatten()(dropDil3)
+
+FCDil1 = Dense(1000,activation='relu')(flatDil1)
+
+# stack fully-connected layer outputs from regular and dilated convolution
+stacked_layers = tf.reshape(tf.concat([FC1,FCDil1],1),shape = [-1,2,1000,1])
+# flatten stacked layers
+stacked_layers = Flatten()(stacked_layers)
+
+FC = Dense(50,activation='relu',name='representation')(stacked_layers)
 preds = Dense(num_GOterms,activation='sigmoid')(FC)
 
 # loss function
