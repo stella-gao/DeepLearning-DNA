@@ -29,7 +29,7 @@ validation_h5file = 'data/h5datasets/' + str(species_dir) + '/validation.h5'
 promoter_length = 500
 
 # training parameters
-epochs = 15
+epochs = 25
 batch_size = 200
 
 # CNN hyperparameters
@@ -164,12 +164,12 @@ with sess.as_default():
                 str(val_acc),str(val_loss)]))
 
     # save model
-    saver.save(sess,species_dir + '_model')
+    saver.save(sess,species_dir + '_dnamodel')
 
     # get representational output 
     rep_layer = sess.run(FC,feed_dict={dna: validation_dat, \
         labels: validation_labels,K.learning_phase(): 0})
 
     # write representational output to file
-    np.savetxt(species_dir + '_rep.txt',rep_layer,delimiter='\t')
+    np.savetxt(species_dir + '_dnarep.txt',rep_layer,delimiter='\t')
 

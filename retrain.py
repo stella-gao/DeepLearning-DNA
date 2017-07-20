@@ -15,6 +15,7 @@ import tensorflow as tf
 from keras import backend as K
 from keras.models import Sequential
 from keras.layers import Input, Dense, Lambda, Conv2D, concatenate, Reshape, AveragePooling2D, MaxPooling2D, Flatten, Dropout
+from keras.layers.advanced_activations import LeakyReLU
 from keras.metrics import categorical_accuracy
 from keras.objectives import categorical_crossentropy
 from keras.optimizers import Adam
@@ -22,14 +23,14 @@ from keras import callbacks
 from keras.utils.io_utils import HDF5Matrix
 from sklearn.metrics import hamming_loss
 
-species_dir = 'all4_unmasked'
+species_dir = 'all8'
 model_dir = ''
-model_name = 'all4_unmasked_model'
-train_h5file = 'data/h5datasets/all4_unmasked/train_sCer_cEleg.h5'
-validation_h5file = 'data/h5datasets/all4_unmasked/validation.h5'
+model_name = 'all8_model'
+train_h5file = 'data/h5datasets/all8/train.h5'
+validation_h5file = 'data/h5datasets/all8/validation.h5'
 
 # training parameters
-epochs = 15
+epochs = 30
 batch_size = 200
 
 # read in HDF5 file & create batch iterator for training data

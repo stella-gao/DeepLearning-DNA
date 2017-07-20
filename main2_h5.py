@@ -15,6 +15,7 @@ import tensorflow as tf
 from keras import backend as K
 from keras.models import Sequential
 from keras.layers import Input, Dense, Lambda, Conv2D, concatenate, Reshape, AveragePooling2D, MaxPooling2D, Flatten, Dropout
+from keras.layers.advanced_activations import LeakyReLU
 from keras.metrics import categorical_accuracy, binary_accuracy
 from keras.objectives import categorical_crossentropy, binary_crossentropy
 from keras.optimizers import Adam
@@ -108,7 +109,7 @@ drop3 = Dropout(0.5)(pool3)
 #             name='AvgPool_4')(conv6)
 # drop6 = Dropout(0.5)(pool6)
 
-flat = Flatten()(drop6)
+flat = Flatten()(drop3)
 FC = Dense(50,activation='relu',name='representation')(flat)
 preds = Dense(num_GOterms,activation='sigmoid')(FC)
 

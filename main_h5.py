@@ -23,6 +23,24 @@ from keras import callbacks
 from keras.utils.io_utils import HDF5Matrix
 from sklearn.metrics import hamming_loss
 
+def conv_drop(input_tensor,layer_num,filter_height):
+    conv = Conv2D(num_filters,[filter_height,filter_width],activation='linear', \
+                kernel_regularizer='l2',padding='valid',name='conv_'+str(layer_num))(input_tensor)
+    leak = LeakyReLU(alpha=.001)(conv)
+    drop = Dropout(0.5)(leak)
+
+    return drop
+
+def conv_pool_drop(input_tensor,layer_num,filter_height):
+    conv = Conv2D(num_filters,[filter_height,filter_width],activation='linear', \
+                kernel_regularizer='l2',padding='valid',name='conv_'+str(layer_num))(input_tensor)
+    leak = LeakyReLU(alpha=.001)(conv)
+    pool = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
+                name='AvgPool_'+str(layer_num))(leak)
+    drop = Dropout(0.5)(pool)
+
+    return drop
+
 species_dir = str(sys.argv[1])
 print(species_dir)
 train_h5file = 'data/h5datasets/' + str(species_dir) + '/train.h5'
@@ -66,28 +84,36 @@ dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='dna')
 # define placeholder for species labels
 labels = tf.placeholder(tf.float32,shape=(None,num_species),name='label')
 
-# build layers of network
-conv1 = Conv2D(num_filters,[filter_height1,filter_width],activation='linear', \
-            kernel_regularizer='l2',padding='valid',name='conv_1')(dna)
-leak1 = LeakyReLU(alpha=.001)(conv1)
-pool1 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
-            name='AvgPool_1')(leak1)
-drop1 = Dropout(0.5)(pool1)
+# # build layers of network
+# conv1 = Conv2D(num_filters,[filter_height1,filter_width],activation='linear', \
+#             kernel_regularizer='l2',padding='valid',name='conv_1')(dna)
+# leak1 = LeakyReLU(alpha=.001)(conv1)
+# pool1 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
+#             name='AvgPool_1')(leak1)
+# drop1 = Dropout(0.5)(pool1)
 
-conv2 = Conv2D(num_filters,[filter_height2,filter_width],activation='linear', \
-            kernel_regularizer='l2',padding='valid',name='conv_2')(drop1)
-leak2 = LeakyReLU(alpha=.001)(conv2)
-pool2 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-            name='AvgPool_2')(leak2)
-drop2 = Dropout(0.5)(pool2)
+# conv2 = Conv2D(num_filters,[filter_height2,filter_width],activation='linear', \
+#             kernel_regularizer='l2',padding='valid',name='conv_2')(drop1)
+# leak2 = LeakyReLU(alpha=.001)(conv2)
+# pool2 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+#             name='AvgPool_2')(leak2)
+# drop2 = Dropout(0.5)(pool2)
 
-conv3 = Conv2D(num_filters,[filter_height2,filter_width],activation='linear', \
-            kernel_regularizer='l2',padding='valid',name='conv_3')(drop2)
-leak3 = LeakyReLU(alpha=.001)(conv3)
-pool3 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
-            name='AvgPool_3')(leak3)
-drop3 = Dropout(0.5)(pool3)
-flat = Flatten()(drop3)
+# conv3 = Conv2D(num_filters,[filter_height2,filter_width],activation='linear', \
+#             kernel_regularizer='l2',padding='valid',name='conv_3')(drop2)
+# leak3 = LeakyReLU(alpha=.001)(conv3)
+# pool3 = AveragePooling2D((1,pool_size),strides=(1,pool_stride),padding='valid', \
+#             name='AvgPool_3')(leak3)
+# drop3 = Dropout(0.5)(pool3)
+
+drop1 = conv_drop(dna,1,filter_height1)
+drop2 = conv_drop(drop1,2,filter_height2)
+drop3 = conv_pool_drop(drop2,3,filter_height2)
+drop4 = conv_drop(drop3,4,filter_height2)
+drop5 = conv_drop(drop4,5,filter_height2)
+drop6 = conv_pool_drop(drop5,6,filter_height2)
+
+flat = Flatten()(drop6)
 FC = Dense(50,activation='relu',name='representation')(flat)
 preds = Dense(num_species,activation='softmax')(FC)
 

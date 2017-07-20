@@ -153,13 +153,13 @@ def convertLabels(labels):
 # random_sample = True
 
 random_sample = False
-ontology_terms = ['chromosome_orgP','rib_bio']
+ontology_terms = ['extracellC','ribonucC']
 # ontology_terms = ['skeletal','multicell_dev']
-species = ['sCer']
-species_list = ['cerevisiae']
+species = ['Human']
+species_list = ['sapien']
 
-# combine_GOterms(species,species_list,ontology_terms,upstream_length,\
-# 		promoter_length,window_step,2,random_sample,balance=True)
+combine_GOterms(species,species_list,ontology_terms,upstream_length,\
+		promoter_length,window_step,2,random_sample,balance=True)
 
 
 
@@ -198,9 +198,9 @@ def rewriteHDF5_GO2(h5_file,dir_name): # multi-label binary encoding
 	f.close()
 	g.close()
 
-dir_name = 'data/h5datasets_GO/sCer_chrorg_ribbio/'
-rewriteHDF5_GO2('train.h5',dir_name)
-rewriteHDF5_GO2('validation.h5',dir_name)
+# dir_name = 'data/h5datasets_GO/sCer_chrorg_ribbio/'
+# rewriteHDF5_GO2('train.h5',dir_name)
+# rewriteHDF5_GO2('validation.h5',dir_name)
 
 # dir_name = 'data/h5datasets_GO/new_sCer_6GO/'
 # rewriteHDF5_GO('train.h5',dir_name)

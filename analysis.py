@@ -258,7 +258,7 @@ def scale_dnaseq(dnaseq,alpha):
 	scaled_seq = [np.array(i) for i in scaled_seq]
 	return np.array(scaled_seq)
 
-def integrated_gradients(sess,graph,dnaseq):
+def integrated_gradients(sess,graph,dnaseq,labelIdx=False):
 	'''computes the attributions/feature importances for the prediction
 	label based on integrated gradients at the inputted DNA sequence'''
 
@@ -270,16 +270,19 @@ def integrated_gradients(sess,graph,dnaseq):
 	# tensor representing the softmax output for a given label
 	preds_label = tf.reduce_mean(preds,reduction_indices=0)
 
-	# identify highest predicted label
-	feed_dict = {dna: np.array([dnaseq]), dropout1: 0}
-	pred_score = sess.run(preds,feed_dict)	
-	maxscoreIdx = np.argmax(pred_score)
+
+	if labelIdx: # identify attributions associated with given label
+		scoreIdx = labelIdx
+	else: # identify attributions associated with highest predicted label
+		feed_dict = {dna: np.array([dnaseq]), dropout1: 0}
+		pred_score = sess.run(preds,feed_dict)	
+		scoreIdx = np.argmax(pred_score)
 
 	# scale one-hot encoded DNA sequences
 	scaled_dna = np.array([scale_dnaseq(dnaseq,i) for i in np.linspace(0,1,50)])
 	feed_dict2 = {dna: scaled_dna,dropout1: 0}
 
-	grad = tf.gradients(preds_label[maxscoreIdx],dna)[0]
+	grad = tf.gradients(preds_label[scoreIdx],dna)[0]
 	grad_vals = sess.run(grad,feed_dict2)
 
 	return dnaseq*np.average(grad_vals,axis=0)
@@ -298,7 +301,7 @@ def plotAttr_dnaseq(scaled_dna):
 	'''visualizes the attributions of an inputted scaled one-hot encoded DNA sequence'''
 
 	# dictionary relating nucleotide color and index in one-hot encoded sequence
-	colorIdx_dict = {0: 'red', 1: 'blue', 2: 'green', 3:'yellow'}
+	colorIdx_dict = {0: 'green', 1: 'red', 2: 'blue', 3:'orange'}
 
 	colors = []
 	vals = []
@@ -314,14 +317,14 @@ def plotAttr_dnaseq(scaled_dna):
 
 	vals_group = []
 	for i in range(0,len(vals),10):
-		# vals_group.append(np.mean(vals[i:i+10]))
-		vals_group.append(i)
+		vals_group.append(np.mean(vals[i:i+10]))
+		# vals_group.append(i)
 
 	print(vals_group)
 
 	ax[0].bar(range(1,len(vals)+1),vals,color=colors)
-	print(np.array(range(1,len(vals)+1,10))+5)
-	ax[1].bar(np.array(range(1,len(vals)+1,10))+5,vals_group)
+	# print(np.array(range(1,len(vals)+1,10))+5)
+	ax[1].bar(np.array(range(1,len(vals)+1,10))+5,vals_group,width=10)
 	plt.show()
 
 def deepliftAttrs(keras_model,dnaseq):
@@ -404,6 +407,7 @@ def GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4):
 
 	return betw_genes
 
+# write_projection('all8_rep.txt','all8_rep_pca.txt')
 # json_file = open('sCer_dHansmodel.json','r')
 # loaded_model_json = json_file.read()
 # json_file.close()
@@ -466,27 +470,31 @@ def GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4):
 
 # a = GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4)
 
-# # restore graph
-# sess = tf.Session()
-# saver = tf.train.import_meta_graph(model_dir + model_name + '.meta')
-# saver.restore(sess,'./' + model_dir + model_name)
+model_name = 'all8_model'
+model_dir = ''
+testdata_file = 'data/h5datasets/all8/validation.h5'
 
-# f = h5py.File(testdata_file,'r')
-# dnaseq = f['dnaseq'][0]
-# lab = f['labels'][0]
+# restore graph
+sess = tf.Session()
+saver = tf.train.import_meta_graph(model_dir + model_name + '.meta')
+saver.restore(sess,'./' + model_dir + model_name)
 
-# graph = tf.get_default_graph()
+f = h5py.File(testdata_file,'r')
+dnaseq = f['dnaseq'][6]
+lab = f['species_labels'][6]
 
-# # identify relevant placeholders and operations
-# dna = graph.get_tensor_by_name("dna:0")
-# labels = graph.get_tensor_by_name("label:0")
-# dropout1 = graph.get_tensor_by_name("dropout_1/keras_learning_phase:0")
-# opt = graph.get_tensor_by_name('representation/Relu:0')
-# preds = graph.get_tensor_by_name('dense_1/Softmax:0')
+graph = tf.get_default_graph()
+
+# identify relevant placeholders and operations
+dna = graph.get_tensor_by_name("dna:0")
+labels = graph.get_tensor_by_name("label:0")
+dropout1 = graph.get_tensor_by_name("dropout_1/keras_learning_phase:0")
+opt = graph.get_tensor_by_name('representation/Relu:0')
+preds = graph.get_tensor_by_name('dense_1/Softmax:0')
 
 # feed_dict = {dna: dnaseq, labels: lab, dropout1: 0}
 
-# grads_attrs = gradients(sess,graph,dnaseq)
+# grads_attrs = integrated_gradients(sess,graph,dnaseq)
 # scaled_dna = scaleAttr_dnaseq(dnaseq,grads_attrs,ptile=99)
-# plotAttr_dnaseq(scaled_dna[0])
+# plotAttr_dnaseq(scaled_dna) #[0])
 

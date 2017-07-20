@@ -43,8 +43,8 @@ def plot_bygroup(X,metadata_file,num_clusters):
 
 	# 
 
-X = np.loadtxt('results/saved_models/sCer_cEleg_Mouse_Human/blah.txt',delimiter='\t')
+X = np.loadtxt('all8_rep_pca.txt',delimiter='\t')
 
-metadata_file = 'results/saved_models/sCer_cEleg_Mouse_Human/sCer_cEleg_Mouse_Human_val_metadata.tsv'
+metadata_file = 'all8_metadata.tsv'
 
-a = plot_bygroup(X,metadata_file)
+plot_bygroup(X,metadata_file,8)

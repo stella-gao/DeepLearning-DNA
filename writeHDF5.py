@@ -107,9 +107,9 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 		min_datsize = min([len(gene_window[1]) for gene_window in gene_windows])
 
 		# determine number of windows per gene to select for each species
-		train_num_windows_per_gene = [min(10,int(float(min_datsize)/len(seq_dict.keys()))) \
+		train_num_windows_per_gene = [max(2,min(10,int(float(min_datsize)/len(seq_dict.keys())))) \
 			for seq_dict in seq_dicts]
-		val_num_windows_per_gene = [int(float(min_datsize)/len(seq_dict.keys())) \
+		val_num_windows_per_gene = [max(2,int(float(min_datsize)/len(seq_dict.keys()))) \
 			for seq_dict in seq_dicts]
 
 		# get indices for training and validation datasets
@@ -316,7 +316,7 @@ def rewriteHDF5(h5_file,dir_name):
 
 upstream_length = 1000
 promoter_length = 500
-window_step = 20
+window_step = 40
 
 species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','sBoul']
 combine_species(species_list,upstream_length,promoter_length,window_step,3,False)
