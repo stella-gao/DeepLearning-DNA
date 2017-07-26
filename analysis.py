@@ -3,6 +3,7 @@ import numpy as np
 import h5py
 import itertools
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
 import tensorflow as tf
 from keras.models import model_from_json
@@ -74,14 +75,14 @@ def filterLabels(representation_file,metadata_file,index_set,output_file):
 	f = open(metadata_file,'r')
 	reader = csv.reader(f,delimiter='\t')
 
-	g = open(output_file,'w')
+	g = open(output_file + '_metadata.tsv','w')
 	writer = csv.writer(g,delimiter='\t')
 	
 	i = 0
 	index_list = []
 	writer.writerow(reader.next()) # skip metadata file header
 	for line in reader:
-		if line[0] in index_set:
+		if int(line[0]) in index_set:
 			writer.writerow(line)
 			index_list.append(i)
 		i += 1
@@ -313,18 +314,21 @@ def plotAttr_dnaseq(scaled_dna):
 				vals.append(scaled_dna[j][i])
 				break
 
-	fig, ax = plt.subplots(2) #, figsize=(6, 12))
+	fig, ax = plt.subplots(2,figsize=(12, 6))
 
 	vals_group = []
-	for i in range(0,len(vals),10):
-		vals_group.append(np.mean(vals[i:i+10]))
-		# vals_group.append(i)
-
-	print(vals_group)
+	for i in range(0,len(vals),5):
+		vals_group.append(np.mean(vals[i:i+3]))
 
 	ax[0].bar(range(1,len(vals)+1),vals,color=colors)
-	# print(np.array(range(1,len(vals)+1,10))+5)
-	ax[1].bar(np.array(range(1,len(vals)+1,10))+5,vals_group,width=10)
+	A_patch = mpatches.Patch(color='green', label='A')
+	T_patch = mpatches.Patch(color='red', label='T')
+	C_patch = mpatches.Patch(color='blue', label='C')
+	G_patch = mpatches.Patch(color='orange', label='G')
+
+	ax[0].legend(handles=[A_patch,T_patch,C_patch,G_patch])
+
+	ax[1].bar(np.array(range(1,len(vals)+1,5)),vals_group,width=5)
 	plt.show()
 
 def deepliftAttrs(keras_model,dnaseq):
@@ -407,6 +411,12 @@ def GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4):
 
 	return betw_genes
 
+# representation_file = 'all8_filter2rep.txt'
+# metadata_file = 'all8_metadata.tsv'
+# index_set = [2,3]
+# output_file = 'all8_MouseHuman'
+# filterLabels(representation_file,metadata_file,index_set,output_file)
+
 # write_projection('all8_rep.txt','all8_rep_pca.txt')
 # json_file = open('sCer_dHansmodel.json','r')
 # loaded_model_json = json_file.read()
@@ -469,32 +479,3 @@ def GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4):
 # num_clusters = 4
 
 # a = GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4)
-
-model_name = 'all8_model'
-model_dir = ''
-testdata_file = 'data/h5datasets/all8/validation.h5'
-
-# restore graph
-sess = tf.Session()
-saver = tf.train.import_meta_graph(model_dir + model_name + '.meta')
-saver.restore(sess,'./' + model_dir + model_name)
-
-f = h5py.File(testdata_file,'r')
-dnaseq = f['dnaseq'][6]
-lab = f['species_labels'][6]
-
-graph = tf.get_default_graph()
-
-# identify relevant placeholders and operations
-dna = graph.get_tensor_by_name("dna:0")
-labels = graph.get_tensor_by_name("label:0")
-dropout1 = graph.get_tensor_by_name("dropout_1/keras_learning_phase:0")
-opt = graph.get_tensor_by_name('representation/Relu:0')
-preds = graph.get_tensor_by_name('dense_1/Softmax:0')
-
-# feed_dict = {dna: dnaseq, labels: lab, dropout1: 0}
-
-# grads_attrs = integrated_gradients(sess,graph,dnaseq)
-# scaled_dna = scaleAttr_dnaseq(dnaseq,grads_attrs,ptile=99)
-# plotAttr_dnaseq(scaled_dna) #[0])
-

@@ -14,33 +14,15 @@ import sys
 import tensorflow as tf
 from keras import backend as K
 from keras.models import Sequential
-from keras.layers import Input, Dense, Lambda, Conv2D, concatenate, Reshape, AveragePooling2D, MaxPooling2D, Flatten, Dropout
+from keras.layers import Input, Dense, Lambda, Conv2D, concatenate, Reshape, AveragePooling2D, MaxPooling2D, Flatten, Dropout, LSTM
 from keras.layers.advanced_activations import LeakyReLU
+from keras.layers.normalization import BatchNormalization
 from keras.metrics import categorical_accuracy
 from keras.objectives import categorical_crossentropy
 from keras.optimizers import Adam
 from keras import callbacks
 from keras.utils.io_utils import HDF5Matrix
 from sklearn.metrics import hamming_loss
-
-species_dir = str(sys.argv[1])
-print(species_dir + ' 2-branched convolution')
-train_h5file = 'data/h5datasets/' + str(species_dir) + '/train.h5'
-validation_h5file = 'data/h5datasets/' + str(species_dir) + '/validation.h5'
-promoter_length = 500
-
-# training parameters
-epochs = 40
-batch_size = 50
-
-# CNN hyperparameters
-num_filters = 80
-pool_size = 2
-pool_stride = 2
-filter_height1 = 4
-filter_height2 = 1
-filter_width = 3
-learning_rate = 0.0001
 
 def conv_drop(input_tensor,layer_num,filter_height,filter_width,kernelReg=None,dilation=False):
     if dilation:
@@ -73,6 +55,27 @@ def conv_pool_drop(input_tensor,layer_num,filter_height,filter_width,kernelReg=N
 
     return drop
 
+species_dir = str(sys.argv[1])
+print(species_dir)
+
+train_h5file = 'data/h5datasets/' + str(species_dir) + '/train.h5'
+validation_h5file = 'data/h5datasets/' + str(species_dir) + '/validation.h5'
+
+promoter_length = 500
+
+# training parameters
+epochs = 30
+batch_size = 200
+
+# CNN hyperparameters
+num_filters = 80
+pool_size = 2
+pool_stride = 2
+filter_height1 = 4
+filter_height2 = 1
+filter_width = 5
+learning_rate = 0.0001
+
 # print hyperparameters
 print('Batch Size: ' + str(batch_size))
 print('Number of Filters: ' + str(num_filters))
@@ -85,7 +88,7 @@ train_batcher = train_data.batcher()
 
 # read in HDF5 file for validation data
 validation_file = h5py.File(validation_h5file,'r')
-val_datsize = min(5000,validation_file.values()[0].shape[0])
+val_datsize = min(10000,validation_file.values()[0].shape[0])
 validation_dat = validation_file['dnaseq'][0:val_datsize]
 validation_labels = validation_file['species_labels'][0:val_datsize]
 
@@ -102,28 +105,16 @@ dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='dna')
 # define placeholder for species labels
 labels = tf.placeholder(tf.float32,shape=(None,num_species),name='label')
 
-# build regular convolution branch in network (2 convolutional layers)
+# build layers of network
+
 drop1 = conv_pool_drop(dna,1,filter_height1,filter_width)
 drop2 = conv_pool_drop(drop1,2,filter_height2,filter_width)
 drop3 = conv_pool_drop(drop2,3,filter_height2,filter_width)
-flat1 = Flatten()(drop3)
-FC1 = Dense(500,activation='relu')(flat1)
 
-# build dilated convolution branch in network (1 convolutional layer)
-dropDil1 = conv_pool_drop(dna,1,filter_height1,filter_width,dilation=(1,4))
-dropDil2 = conv_pool_drop(drop1,2,filter_height2,filter_width,dilation=(1,8))
-# drop3 = conv_pool_drop(drop2,3,filter_height2,dilation=(1,4))
-flatDil1 = Flatten()(dropDil2)
-FCDil1 = Dense(500,activation='relu')(flatDil1)
+lstm1 = LSTM(256)(tf.squeeze(drop3,[1]))
 
-# stack fully-connected layer outputs from regular and dilated convolution
-stacked_layers = tf.reshape(tf.concat([FC1,FCDil1],1),shape = [-1,2,500,1])
-
-# apply convolution layer to stacked regular+dilated convolution outputs
-drop_stacked = conv_pool_drop(stacked_layers,'stack',2,filter_width)
-
-flatLast = Flatten()(drop_stacked)
-FC = Dense(50,activation='relu',name='representation')(flatLast)
+#flat = Flatten()(lstm1)
+FC = Dense(50,activation='relu',name='representation')(lstm1)
 preds = Dense(num_species,activation='softmax')(FC)
 
 # loss function
@@ -160,7 +151,7 @@ with sess.as_default():
             labels: batch['species_labels'], K.learning_phase(): 1})
 
         # log training and validation accuracy
-        if i%100 == 0:
+        if i%1000 == 0:
 
             epoch_num = i/train_size*batch_size
 
@@ -175,7 +166,7 @@ with sess.as_default():
 
             # save model if current validation loss is lower than the previous lowest
             if val_loss < lowest_val_loss:
-                saver.save(sess,species_dir + '_dnamodel')
+                saver.save(sess,species_dir + '_LSTMmodel')
                 lowest_val_loss = val_loss
 
     # get representational output 
@@ -183,5 +174,5 @@ with sess.as_default():
         labels: validation_labels,K.learning_phase(): 0})
 
     # write representational output to file
-    np.savetxt(species_dir + '_dnarep.txt',rep_layer,delimiter='\t')
+    np.savetxt(species_dir + '_LSTMrep.txt',rep_layer,delimiter='\t')
 

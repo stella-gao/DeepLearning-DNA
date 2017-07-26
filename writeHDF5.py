@@ -99,7 +99,7 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 	else: # ensure all genes are represented! (different # of windows/gene/species)
 		print('creating windows...')
 		gene_windows = [getallWindows(seq_dict,promoter_length,window_step,\
-			concat=False,num_windows=10) for seq_dict in seq_dicts]
+			concat=False,num_windows=5) for seq_dict in seq_dicts]
 		windows = [wind for wind,gene in gene_windows]
 		gene_list = [[gene for gene in sorted(seq_dict)] for seq_dict in seq_dicts]
 
@@ -301,10 +301,10 @@ def rewriteHDF5(h5_file,dir_name):
 	f.close()
 	g.close()
 
-# h5_file = 'data/h5datasets/all4_unmasked/train.h5'
-# outfile = 'data/h5datasets/all4_unmasked/train_sCer_cEleg.h5'
-# inds_to_keep = [0,1]
-# filterDatabySpeciesLabel(h5_file,outfile,inds_to_keep)
+h5_file = 'data/h5datasets/all4_unmasked/train.h5'
+outfile = 'data/h5datasets/all4_unmasked/train_sCer_cEleg.h5'
+inds_to_keep = [0,1]
+filterDatabySpeciesLabel(h5_file,outfile,inds_to_keep)
 
 # dir_name = 'data/h5datasets/new2_all4/'
 # rewriteHDF5('train.h5',dir_name)
@@ -316,10 +316,11 @@ def rewriteHDF5(h5_file,dir_name):
 
 upstream_length = 1000
 promoter_length = 500
-window_step = 40
+window_step = 50
 
-species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','sBoul']
-combine_species(species_list,upstream_length,promoter_length,window_step,3,False)
+# species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','sBoul']
+# species_list = ['Mouse','Human']
+# combine_species(species_list,upstream_length,promoter_length,window_step,3,False)
 
 # species_list = ['sCer','sPom']
 # combine_species(species_list,upstream_length,promoter_length,window_step,3,True)
