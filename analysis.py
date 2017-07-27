@@ -198,6 +198,15 @@ def getPredictions(model_name,model_dir,testdata_file,label_names):
 	return predictions,confusion_matrix(truelabel_names,prediction_names,\
 		labels=label_names)
 
+def calcPrecisionRecall(cm):
+	'''calculates precision and recall from an inputted confusion matrix'''
+
+	true_pos = np.diag(cm)
+	precision = np.sum(true_pos / np.sum(cm, axis=0))
+	recall = np.sum(true_pos / np.sum(cm, axis=1))
+
+	return precision, recall
+	
 ### FEATURE IMPORTANCE VIA GRADIENTS ##########################################
 
 def top_label_and_score(dnaseq,label,sess,graph,label_names):

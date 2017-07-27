@@ -18,17 +18,17 @@ validation_h5file = 'data/simulated_dna/' + str(species_dir) + '/validation.h5'
 background_h5file = 'data/simulated_dna/background.h5'
 
 # Discriminator training parameters
-Disc_epochs = 1
+Disc_epochs = 2
 Disc_batch_size = 50
 
 # Mutator training parameters
-Mut_epochs = 40
+Mut_epochs = 500
 Mut_batch_size = 50
 
 # read in HDF5 file & create batch iterator for Discriminator training data
 train_file = h5py.File(train_h5file,'r')
 train_data = TrainData(train_file,Disc_batch_size)
-train_batcher = train_data.batcher()
+Disc_batcher = train_data.batcher()
 Disc_train_size = train_file.values()[0].shape[0]
 
 # read in HDF5 file for Discriminator validation data 
@@ -106,6 +106,9 @@ with tf.variable_scope('mutator'):
     # set hard=True for ST Gumbel-Softmax   
     mutant = gumbel_softmax(inp, logits_dna, tau, hard=False)
 
+    # create copy of mutant (for accessing later)
+    mutant_copy = tf.identity(mutant,name='mutant')
+
 with tf.variable_scope('discriminator'):
     cn1 = Conv2D(64, [4, 5],
                     activation='relu',
@@ -136,6 +139,10 @@ with tf.variable_scope('discriminator'):
     # non-mutant/real probability (of being real)
     p_nonmutant = dn2d(dn1(fl1(mp2(cn3(mp1(cn2(cn1(inp))))))))
 
+    # create copies of mutant and non-mutant predictions (for accessing later)
+    p_mutant_copy = tf.identity(p_mutant,name='prediction_mutant')
+    p_nonmutant_copy = tf.identity(p_nonmutant,name='prediction_nonmutant')
+
     # features branch
     featConv = Conv2D(64, [4, 5],activation='relu',kernel_regularizer='l2',
                     padding='valid',name='featuresConv')
@@ -157,7 +164,7 @@ mutator_loss = tf.reduce_mean(inp*tf.log(K.clip(mutant, K.epsilon(), 1-K.epsilon
 
 D_loss = tf.reduce_mean(categorical_crossentropy(labels, p_nonmutant))
 # D_loss = - tf.reduce_mean(tf.log(p_nonmutant)) - tf.reduce_mean(tf.log(1-p_mutant))
-M_loss = -tf.reduce_mean(categorical_crossentropy(labels,p_mutant)) #-tf.reduce_mean(tf.log(p_mutant[:,0])) #+ mutator_loss
+M_loss = tf.reduce_mean(categorical_crossentropy(labels,p_mutant)) #-tf.reduce_mean(tf.log(p_mutant[:,0])) #+ mutator_loss
 
 # gradient clipping
 # theta_D is list of D's params
@@ -186,6 +193,10 @@ sess = tf.Session()
 init = tf.global_variables_initializer()
 sess.run(init)
 
+# initialize writer to write output to file
+f = open('MAN_' + species_dir + '.output','w')
+writer = csv.writer(f,delimiter='\t')
+
 # determine number of total iterations to train Discriminator
 DiscTotalIterations = int(float(Disc_train_size)*Disc_epochs/Disc_batch_size)
 print(DiscTotalIterations)
@@ -196,33 +207,34 @@ print(MutTotalIterations)
 
 with sess.as_default():
 
-    print('epochs\ttrain_acc\ttrain_loss\tval_acc\tval_loss')
+    # print('epochs\ttrain_acc\ttrain_loss\tval_acc\tval_loss')
 
-    # train Discriminator first
-    for i in range(DiscTotalIterations):
-        batch = train_batcher.next()
-        sess.run([D_solver],feed_dict={inp: batch['dnaseq'], \
-            labels: batch['labels'], K.learning_phase(): 1})
-        # log training and validation accuracy
-        if i%800 == 0:
+    # # train Discriminator first
+    # for i in range(DiscTotalIterations):
+    #     Disc_batch = Disc_batcher.next()
+    #     sess.run([D_solver],feed_dict={inp: batch['dnaseq'], \
+    #         labels: batch['labels'], K.learning_phase(): 1})
 
-            epoch_num = float(i)/Disc_train_size*Disc_batch_size
+    #     # log training and validation accuracy
+    #     if i%800 == 0:
 
-            train_acc,train_loss = sess.run([nonmutant_accuracy,D_loss],feed_dict={inp: batch['dnaseq'], \
-                labels: batch['labels'], K.learning_phase(): 0})
+    #         epoch_num = float(i)/Disc_train_size*Disc_batch_size
 
-            val_acc,val_loss = sess.run([nonmutant_accuracy,D_loss],feed_dict={inp: validation_dat, \
-                labels: validation_labels, K.learning_phase(): 0})
+    #         train_acc,train_loss = sess.run([nonmutant_accuracy,D_loss],feed_dict={inp: batch['dnaseq'], \
+    #             labels: batch['labels'], K.learning_phase(): 0})
 
-            print('\t'.join([str(epoch_num),str(train_acc),str(train_loss), \
-                str(val_acc),str(val_loss)]))
+    #         val_acc,val_loss = sess.run([nonmutant_accuracy,D_loss],feed_dict={inp: validation_dat, \
+    #             labels: validation_labels, K.learning_phase(): 0})
+
+    #         print('\t'.join([str(epoch_num),str(train_acc),str(train_loss), \
+    #             str(val_acc),str(val_loss)]))
 
     # print(sess.run([p_nonmutant],feed_dict={inp: validation_dat,labels:validation_labels,K.learning_phase():0}))
 
-    print('Finished training Discriminator.')
-    print('--------------------')
-    print('Training Mutator...')
-    print('epochs\tMutator_loss\tMutator_accuracy\tMutant_change')
+    # print('Finished training Discriminator.')
+    # print('--------------------')
+    # print('Training Mutator...')
+    # print('epochs\tMutator_loss\tMutator_accuracy\tMutant_change')
 
     # initialize model saver
     saver = tf.train.Saver(max_to_keep=2)
@@ -231,16 +243,64 @@ with sess.as_default():
     temperature = 1.
     lowest_Mut_loss = 1000
     for i in range(MutTotalIterations):
-        batch = Mut_batcher.next()
-        M_acc_val,_ = sess.run([mutant_accuracy,M_solver],feed_dict={inp: batch['dnaseq'],labels: np.array([[0.,1.]]), \
+        Mut_batch = Mut_batcher.next()
+        M_acc_val,_ = sess.run([mutant_accuracy,M_solver],feed_dict={inp: Mut_batch['dnaseq'],labels: np.array([[1.,0.]]), \
             tau: temperature, K.learning_phase(): 1})
 
+        # train Discriminator
         if i%2000 == 0:
+            Disc_batch = Disc_batcher.next()
+            sess.run([D_solver],feed_dict={inp: Disc_batch['dnaseq'], \
+                labels: Disc_batch['labels'], K.learning_phase(): 1})
 
-            epoch_num = float(i)/Mut_train_size*Mut_batch_size
-            M_acc_val,M_loss_val,M_change_val = sess.run([mutant_accuracy,M_loss,mutant_change],feed_dict={inp: batch['dnaseq'], \
-                labels: np.array([[0.,1.]]), tau: temperature, K.learning_phase(): 0})
-            print(str(epoch_num)+'\t'+str(M_loss_val) + '\t' + str(M_acc_val) + '\t' + str(M_change_val))
+        if i%5000 == 0:
+
+            # determine number of epochs trained for Mutator, Discriminator
+            Mut_epoch_num = i # float(i)/Mut_train_size*Mut_batch_size
+            Disc_epoch_num = i/2000. # float(i)/Disc_train_size*Disc_batch_size/200.
+
+            # get Discriminator statistics
+            train_acc,train_loss = sess.run([nonmutant_accuracy,D_loss],feed_dict={inp: Disc_batch['dnaseq'], \
+                labels: Disc_batch['labels'], K.learning_phase(): 0})
+
+            val_acc,val_loss = sess.run([nonmutant_accuracy,D_loss],feed_dict={inp: validation_dat, \
+                labels: validation_labels, K.learning_phase(): 0})
+
+            print('Discriminator Statistics:')
+            print('Discriminator Epochs: ' + str(Disc_epoch_num))
+            print('Training Accuracy: ' + str(train_acc))
+            print('Training Loss: ' + str(train_loss))
+            print('Validation Accuracy: ' + str(val_acc))
+            print('Validation Loss: ' + str(val_loss))
+            print('--------------------')
+
+            writer.writerow(['Discriminator Statistics:'])
+            writer.writerow(['Discriminator Epochs:',Disc_epoch_num])
+            writer.writerow(['Training Accuracy:',train_acc])
+            writer.writerow(['Training Loss:',train_loss])
+            writer.writerow(['Validation Accuracy:',val_acc])
+            writer.writerow(['Validation Loss:',val_loss])
+            writer.writerow(['--------------------]')
+
+            # get Mutator statistics
+            # print(sess.run(p_mutant,feed_dict={inp: Mut_batch['dnaseq'],K.learning_phase(): 0}))
+            M_acc_val,M_loss_val,M_change_val = sess.run([mutant_accuracy,M_loss,mutant_change],feed_dict={inp: Mut_batch['dnaseq'], \
+                labels: np.array([[1.,0.]]), tau: temperature, K.learning_phase(): 0})
+            # print(str(epoch_num)+'\t'+str(M_loss_val) + '\t' + str(M_acc_val) + '\t' + str(M_change_val))
+
+            print('Mutator Statistics:')
+            print('Mutator Epochs: ' + str(Mut_epoch_num))
+            print('Mutator Loss: ' + str(M_loss_val))
+            print('Mutator Accuracy: ' + str(M_acc_val))
+            print('Mutator Change: ' + str(M_change_val))
+            print('\n\n')
+
+            writer.writerow(['Mutator Statistics:'])
+            writer.writerow(['Mutator Epochs:',Mut_epoch_num])
+            writer.writerow(['Mutator Loss:',M_loss_val])
+            writer.writerow(['Mutator Accuracy:',M_acc_val])
+            writer.writerow(['Mutator Change:',M_change_val])
+            writer.writerow(['\n\n'])
 
             # save model if current validation loss is lower than the previous lowest
             if M_loss_val < lowest_Mut_loss:

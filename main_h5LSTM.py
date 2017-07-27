@@ -64,8 +64,8 @@ validation_h5file = 'data/h5datasets/' + str(species_dir) + '/validation.h5'
 promoter_length = 500
 
 # training parameters
-epochs = 30
-batch_size = 200
+epochs = 10
+batch_size = 50
 
 # CNN hyperparameters
 num_filters = 80
@@ -88,7 +88,7 @@ train_batcher = train_data.batcher()
 
 # read in HDF5 file for validation data
 validation_file = h5py.File(validation_h5file,'r')
-val_datsize = min(10000,validation_file.values()[0].shape[0])
+val_datsize = min(500,validation_file.values()[0].shape[0])
 validation_dat = validation_file['dnaseq'][0:val_datsize]
 validation_labels = validation_file['species_labels'][0:val_datsize]
 
@@ -106,15 +106,28 @@ dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='dna')
 labels = tf.placeholder(tf.float32,shape=(None,num_species),name='label')
 
 # build layers of network
+# convolutional layer
+drop1 = conv_drop(dna,1,filter_height1,filter_width)
 
-drop1 = conv_pool_drop(dna,1,filter_height1,filter_width)
-drop2 = conv_pool_drop(drop1,2,filter_height2,filter_width)
-drop3 = conv_pool_drop(drop2,3,filter_height2,filter_width)
+# LSTM layer
+lstm1 = LSTM(128)(tf.squeeze(drop1,[1]))
+lstm_drop1 = Dropout(0.5)(lstm1)
 
-lstm1 = LSTM(256)(tf.squeeze(drop3,[1]))
+# # reshape input tensor for LSTM
+# lstm1 = LSTM(128,return_sequences=True)(tf.squeeze(tf.reshape(dna,[tf.shape(dna)[0],promoter_length,4,1]),[3]))
+# lstm_drop1 = Dropout(0.5)(lstm1)
 
-#flat = Flatten()(lstm1)
-FC = Dense(50,activation='relu',name='representation')(lstm1)
+# lstm2 = LSTM(128)(lstm_drop1)
+# lstm_drop2 = Dropout(0.5)(lstm2)
+
+# drop1 = conv_pool_drop(dna,1,filter_height1,filter_width)
+# drop2 = conv_pool_drop(drop1,2,filter_height2,filter_width)
+# drop3 = conv_pool_drop(drop2,3,filter_height2,filter_width)
+
+# lstm1 = LSTM(256)(tf.squeeze(drop3,[1]))
+
+# flat = Flatten()(lstm_drop1)
+FC = Dense(50,activation='relu',name='representation')(lstm_drop1)
 preds = Dense(num_species,activation='softmax')(FC)
 
 # loss function
@@ -137,6 +150,10 @@ K.set_session(sess)
 init_op = tf.global_variables_initializer()
 sess.run(init_op)
 
+# initialize writer to write output to file
+f = open(species_dir + '_ConvLSTM.output','w')
+writer = csv.writer(f,delimiter='\t')
+
 with sess.as_default():
 
     # initialize model saver
@@ -145,6 +162,8 @@ with sess.as_default():
     lowest_val_loss = 1000
 
     print('epochs\ttrain_acc\ttrain_loss\tval_acc\tval_loss')
+    writer.writerow(['epochs','train_acc','train_loss','loss_acc','val_loss'])
+
     for i in range(totalIterations):
         batch = train_batcher.next()
         sess.run([train_step],feed_dict={dna: batch['dnaseq'], \
@@ -164,9 +183,10 @@ with sess.as_default():
             print('\t'.join([str(epoch_num),str(train_acc),str(train_loss), \
                 str(val_acc),str(val_loss)]))
 
+            writer.writerow([epoch_num,train_acc,train_loss,val_acc,val_loss])
             # save model if current validation loss is lower than the previous lowest
             if val_loss < lowest_val_loss:
-                saver.save(sess,species_dir + '_LSTMmodel')
+                saver.save(sess,species_dir + '_ConvLSTMmodel')
                 lowest_val_loss = val_loss
 
     # get representational output 
@@ -174,5 +194,6 @@ with sess.as_default():
         labels: validation_labels,K.learning_phase(): 0})
 
     # write representational output to file
-    np.savetxt(species_dir + '_LSTMrep.txt',rep_layer,delimiter='\t')
+    np.savetxt(species_dir + '_ConvLSTMrep.txt',rep_layer,delimiter='\t')
 
+f.close()
