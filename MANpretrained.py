@@ -22,7 +22,7 @@ Disc_epochs = 2
 Disc_batch_size = 50
 
 # Mutator training parameters
-Mut_epochs = 500
+Mut_epochs = 250
 Mut_batch_size = 50
 
 # read in HDF5 file & create batch iterator for Discriminator training data
@@ -90,8 +90,8 @@ tau = tf.constant(1.0, name='temperature') # temperature
     
 with tf.variable_scope('mutator'):    
 
-    drop1 = conv_pool_drop(inp,1,filter_height1,filter_width)
-    drop2 = conv_pool_drop(drop1,2,filter_height2,filter_width)
+    drop1 = conv_drop(inp,1,filter_height1,filter_width)
+    drop2 = conv_drop(drop1,2,filter_height2,filter_width)
     drop3 = conv_pool_drop(drop2,3,filter_height2,filter_width)
 
     fl1 = Flatten()(drop3)
@@ -134,10 +134,12 @@ with tf.variable_scope('discriminator'):
     dn2d = Dense(2, name='prediction', activation='softmax')
 
     # mutant probability (of being real)
-    p_mutant = dn2d(dn1(fl1(mp2(cn3(mp1(cn2(cn1(mutant))))))))
+    p_mutant = dn2d(dn1(fl1(mp1(cn1(mutant)))))
+    # p_mutant = dn2d(dn1(fl1(mp2(cn3(mp1(cn2(cn1(mutant))))))))
 
     # non-mutant/real probability (of being real)
-    p_nonmutant = dn2d(dn1(fl1(mp2(cn3(mp1(cn2(cn1(inp))))))))
+    p_nonmutant = dn2d(dn1(fl1(mp1(cn1(inp)))))
+    # p_nonmutant = dn2d(dn1(fl1(mp2(cn3(mp1(cn2(cn1(inp))))))))
 
     # create copies of mutant and non-mutant predictions (for accessing later)
     p_mutant_copy = tf.identity(p_mutant,name='prediction_mutant')
@@ -162,9 +164,12 @@ mutator_loss = tf.reduce_mean(inp*tf.log(K.clip(mutant, K.epsilon(), 1-K.epsilon
 # K-L divergence between feature maps of mutant and non-mutant inputs
 # featurematch_loss = tf.reduce_mean(kullback_leibler_divergence(features_nonmutant,features_mutant))
 
+# mutant change
+mutant_change = tf.reduce_sum(tf.square(tf.subtract(inp,mutant)))
+
 D_loss = tf.reduce_mean(categorical_crossentropy(labels, p_nonmutant))
 # D_loss = - tf.reduce_mean(tf.log(p_nonmutant)) - tf.reduce_mean(tf.log(1-p_mutant))
-M_loss = tf.reduce_mean(categorical_crossentropy(labels,p_mutant)) #-tf.reduce_mean(tf.log(p_mutant[:,0])) #+ mutator_loss
+M_loss = tf.reduce_mean(categorical_crossentropy(labels,p_mutant)) - mutator_loss #-tf.reduce_mean(tf.log(p_mutant[:,0]))
 
 # gradient clipping
 # theta_D is list of D's params
@@ -186,16 +191,9 @@ nonmutant_accuracy = tf.reduce_mean(tf.cast(nonmutant_correct_pred, tf.float32))
 mutant_correct_pred = tf.equal(tf.argmax(p_mutant, 1), tf.argmax(labels, 1))
 mutant_accuracy = tf.reduce_mean(tf.cast(mutant_correct_pred, tf.float32))
 
-# mutant change
-mutant_change = tf.reduce_sum(tf.square(tf.subtract(inp,mutant)))
-
 sess = tf.Session()
 init = tf.global_variables_initializer()
 sess.run(init)
-
-# initialize writer to write output to file
-f = open('MAN_' + species_dir + '.output','w')
-writer = csv.writer(f,delimiter='\t')
 
 # determine number of total iterations to train Discriminator
 DiscTotalIterations = int(float(Disc_train_size)*Disc_epochs/Disc_batch_size)
@@ -239,6 +237,10 @@ with sess.as_default():
     # initialize model saver
     saver = tf.train.Saver(max_to_keep=2)
 
+    # initialize writer to write output to file
+    f = open('MAN_' + species_dir + '.output','w')
+    writer = csv.writer(f,delimiter='\t')
+
     # train Mutator
     temperature = 1.
     lowest_Mut_loss = 1000
@@ -248,16 +250,14 @@ with sess.as_default():
             tau: temperature, K.learning_phase(): 1})
 
         # train Discriminator
-        if i%2000 == 0:
+        if i%3000 == 0:
             Disc_batch = Disc_batcher.next()
             sess.run([D_solver],feed_dict={inp: Disc_batch['dnaseq'], \
                 labels: Disc_batch['labels'], K.learning_phase(): 1})
 
-        if i%5000 == 0:
-
             # determine number of epochs trained for Mutator, Discriminator
-            Mut_epoch_num = i # float(i)/Mut_train_size*Mut_batch_size
-            Disc_epoch_num = i/2000. # float(i)/Disc_train_size*Disc_batch_size/200.
+            Mut_epoch_num = float(i)/Mut_train_size*Mut_batch_size
+            Disc_epoch_num = float(i)/Disc_train_size*Disc_batch_size/3000.
 
             # get Discriminator statistics
             train_acc,train_loss = sess.run([nonmutant_accuracy,D_loss],feed_dict={inp: Disc_batch['dnaseq'], \
@@ -280,7 +280,7 @@ with sess.as_default():
             writer.writerow(['Training Loss:',train_loss])
             writer.writerow(['Validation Accuracy:',val_acc])
             writer.writerow(['Validation Loss:',val_loss])
-            writer.writerow(['--------------------]')
+            writer.writerow(['--------------------'])
 
             # get Mutator statistics
             # print(sess.run(p_mutant,feed_dict={inp: Mut_batch['dnaseq'],K.learning_phase(): 0}))

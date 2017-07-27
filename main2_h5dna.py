@@ -111,7 +111,7 @@ flatDil1 = Flatten()(dropDil3)
 FCDil1 = Dense(1000,activation='relu')(flatDil1)
 
 # stack fully-connected layer outputs from regular and dilated convolution
-stacked_layers = tf.reshape(tf.concat([FC1,FCDil1],1),shape = [-1,2,1000,1])
+stacked_layers = tf.stack([FC1,FCDil1],axis=1) # tf.reshape(tf.concat([FC1,FCDil1],1),shape = [-1,2,1000,1])
 # flatten stacked layers
 stacked_layers = Flatten()(stacked_layers)
 
