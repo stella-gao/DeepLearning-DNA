@@ -21,10 +21,10 @@ def plot_bygroup(X,metadata_file,num_clusters):
 
 	fig, ax = plt.subplots()
 	for name, group in groups:
-		ax.scatter(group.X1,group.X2,s=10,label=name)
+		ax.scatter(group.X1,group.X2,s=10,label=name,alpha=0.6)
 	ax.legend()
 
-	gmm = GaussianMixture(n_components=num_clusters, covariance_type='full').fit(X)
+	gmm = GaussianMixture(n_components=num_clusters, covariance_type='full').fit(X[:,0:2])
 
 	# contour plots
 	a = np.linspace(min(X[:,0]),max(X[:,0]),num=100)
@@ -35,16 +35,43 @@ def plot_bygroup(X,metadata_file,num_clusters):
 	Z = -gmm.score_samples(AA)
 	Z = Z.reshape(A.shape)
 
-	CS = plt.contour(A, B, Z, norm=LogNorm(vmin=1.0, vmax=1000.0),levels=np.linspace(3,10,10))
+	CS = plt.contour(A, B, Z, norm=LogNorm(vmin=1.0, vmax=1000.0),\
+		levels=np.linspace(3,10,10))
 	ax.plot(gmm.means_[:,0],gmm.means_[:,1],'+',markersize=13,color='black')
 	ax.clabel(CS)
 
 	plt.show()
 
-	# 
+### MUTATIONAL ADVERSARIAL NETWORK ############################################
+def plotDiscMutAcc(progress_file):
+	'''plots the Discriminator and Mutator accuracy values that are written to
+	file to record model training progress 
+	(Note: Discriminator accuracy: validation accuracy
+		   Mutator accuracy: % of mutants believed to be positive examples by
+		   	the Discriminator)'''
+	
+	Disc_acc = []
+	Mut_acc = []
+	Mut_examples = []
+	with open(progress_file,'r') as f:
+		reader = csv.reader(f,delimiter='\t')
+		reader.next() # skip header
+		for line in reader:
+			Disc_acc.append(float(line[3]))
+			Mut_examples.append(float(line[5])/1000)
+			Mut_acc.append(float(line[7]))
 
-X = np.loadtxt('all8_rep_pca.txt',delimiter='\t')
+	plt.plot(Mut_examples,Disc_acc,label='Discriminator Accuracy')
+	plt.plot(Mut_examples,Mut_acc,label='Mutator Accuracy')
+	plt.xlabel('Mutator Examples Seen (x1000)')
+	plt.ylabel('Accuracy')
+	plt.legend()	
+	
+	plt.show()
 
-metadata_file = 'all8_metadata.tsv'
 
-plot_bygroup(X,metadata_file,8)
+# X = np.loadtxt('all8_rep_pca.txt',delimiter='\t')
+
+# metadata_file = 'all8_metadata.tsv'
+
+# plot_bygroup(X,metadata_file,8)

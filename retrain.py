@@ -29,8 +29,10 @@ model_name = 'all8_model'
 train_h5file = 'data/h5datasets/all8/train.h5'
 validation_h5file = 'data/h5datasets/all8/validation.h5'
 
+outfile_name = 'ConvLSTM'
+
 # training parameters
-epochs = 30
+epochs = 25
 batch_size = 200
 
 # read in HDF5 file & create batch iterator for training data
@@ -81,7 +83,15 @@ with sess.as_default():
     # initialize model saver
     saver = tf.train.Saver(max_to_keep=4)
 
+    lowest_val_loss = 1000
+
+    # initialize writer to write output to file
+    f = open(outfile_name + '.output','w')
+    writer = csv.writer(f,delimiter='\t')
+
     print('epochs\ttrain_acc\ttrain_loss\tval_acc\tval_loss')
+    writer.writerow(['epochs','train_acc','train_loss','loss_acc','val_loss'])
+
     for i in range(totalIterations):
         batch = train_batcher.next()
         sess.run([train_step],feed_dict={dna: batch['dnaseq'], \
@@ -97,17 +107,26 @@ with sess.as_default():
 
             val_acc,val_loss = sess.run([accuracy,loss],feed_dict={dna: validation_dat, \
                 labels: validation_labels, dropout1: 0})
-
+            
             print('\t'.join([str(epoch_num),str(train_acc),str(train_loss), \
                 str(val_acc),str(val_loss)]))
 
+            f = open(outfile_name + '.output','a')
+            writer = csv.writer(f,delimiter='\t')
+            writer.writerow([epoch_num,train_acc,train_loss,val_acc,val_loss])
+            f.close()
+
+            # save model if current validation loss is lower than the previous lowest
+            if val_loss < lowest_val_loss:
+                saver.save(sess,outfile_name + '_model')
+                lowest_val_loss = val_loss
     # save model
-    saver.save(sess,species_dir + '_model_retrain')
+    saver.save(sess,outfile_name + '_model_retrain')
 
     # get representational output 
     rep_layer = sess.run(rep,feed_dict={dna: validation_dat, \
         labels: validation_labels,dropout1: 0})
 
     # write representational output to file
-    np.savetxt(species_dir + '_rep_retrain.txt',rep_layer,delimiter='\t')
+    np.savetxt(outfile_name + '_rep_retrain.txt',rep_layer,delimiter='\t')
 

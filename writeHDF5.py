@@ -254,13 +254,18 @@ def combine_species_allgenes(species_list,upstream_length,promoter_length):
 	# create species labels
 	sp_labels = getLabels(num_windows)
 
+	# create species list
+	allgenes_species_list = [species_list[i] for i in range(len(species_list)) \
+		for j in range(num_windows[i])]
+
 	print('writing...')
 	dt = h5py.special_dtype(vlen=unicode)
 
 	f = h5py.File('+'.join(species_list) + '.all.h5','w')
 	f.create_dataset('dnaseq',data=mat,dtype='f',compression='gzip')
-	f.create_dataset('labels',data=sp_labels,dtype='f',compression='gzip')
+	f.create_dataset('species_labels',data=sp_labels,dtype='f',compression='gzip')
 	f.create_dataset('genes',data=gene_list,dtype=dt,compression='gzip')
+	f.create_dataset('species',data=allgenes_species_list,dtype=dt,compression='gzip')
 	f.close()
 
 def filterDatabySpeciesLabel(h5_file,outfile,inds_to_keep):
@@ -285,7 +290,6 @@ def filterDatabySpeciesLabel(h5_file,outfile,inds_to_keep):
 	f.close()
 	g.close()
 
-
 def rewriteHDF5(h5_file,dir_name):
 
 	f = h5py.File(dir_name + h5_file,'r')
@@ -301,22 +305,59 @@ def rewriteHDF5(h5_file,dir_name):
 	f.close()
 	g.close()
 
-h5_file = 'data/h5datasets/all4_unmasked/train.h5'
-outfile = 'data/h5datasets/all4_unmasked/train_sCer_cEleg.h5'
-inds_to_keep = [0,1]
-filterDatabySpeciesLabel(h5_file,outfile,inds_to_keep)
+def splitHDF(infile,outfile_name,floatkey_list,unicodekey_list):
+	'''takes a dataset in HDF5 file and splits it into a training set and 
+	validation set'''
+
+	f = h5py.File(infile,'r')
+	datsize = f[f.keys()[0]].shape[0]
+	trainIdx = np.random.choice(range(datsize),int(0.8*datsize))
+	valIdx = np.array([i for i in range(datsize) if i not in trainIdx])
+
+	trainFile = h5py.File(outfile_name + 'train.h5','w')
+	valFile = h5py.File(outfile_name + 'validation.h5','w')
+
+	for key in floatkey_list:
+		trainFile.create_dataset(key,data=f[key][:][trainIdx],dtype='f',\
+			compression='gzip')
+		valFile.create_dataset(key,data=f[key][:][valIdx],dtype='f',\
+			compression='gzip')
+
+	dt = h5py.special_dtype(vlen=unicode)
+
+	for key in unicodekey_list:
+		trainFile.create_dataset(key,data=f[key][:][trainIdx],dtype=dt,\
+			compression='gzip')
+		valFile.create_dataset(key,data=f[key][:][valIdx],dtype=dt,\
+			compression='gzip')
+
+	trainFile.close()
+	valFile.close()
+
+# floatkey_list = ['dnaseq','labels']
+# unicodekey_list = ['genes']
+# splitHDF('data/h5datasets/certain_Human/Human_certain.h5','Human',floatkey_list,unicodekey_list)
+# splitHDF('data/h5datasets/certain_Mouse/Mouse_certain.h5','Mouse',floatkey_list,unicodekey_list)
+
+# h5_file = 'data/h5datasets/all4_unmasked/train.h5'
+# outfile = 'data/h5datasets/all4_unmasked/train_sCer_cEleg.h5'
+# inds_to_keep = [0,1]
+# filterDatabySpeciesLabel(h5_file,outfile,inds_to_keep)
 
 # dir_name = 'data/h5datasets/new2_all4/'
 # rewriteHDF5('train.h5',dir_name)
 # rewriteHDF5('validation.h5',dir_name)
 
-# dir_name = 'data/h5datasets/new2_Sac4/'
+# dir_name = 'data/h5datasets/Mouse_Human/'
 # rewriteHDF5('train.h5',dir_name)
 # rewriteHDF5('validation.h5',dir_name)
 
 upstream_length = 1000
 promoter_length = 500
 window_step = 50
+
+# species_list = ['Mouse','Human']
+# combine_species_allgenes(species_list,upstream_length,promoter_length)
 
 # species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','sBoul']
 # species_list = ['Mouse','Human']

@@ -12,7 +12,7 @@ from matplotlib import pylab as pl
 from MANfunc import *
 from model import *
 
-species_dir = 'TAL1_background'
+species_dir = 'Human_background' #'TAL1_background'
 train_h5file = 'data/simulated_dna/' + str(species_dir) + '/train.h5'
 validation_h5file = 'data/simulated_dna/' + str(species_dir) + '/validation.h5'
 background_h5file = 'data/simulated_dna/background.h5'
@@ -22,8 +22,11 @@ Disc_epochs = 2
 Disc_batch_size = 50
 
 # Mutator training parameters
-Mut_epochs = 250
+Mut_epochs = 20
 Mut_batch_size = 50
+
+# Mutator-Discriminator training frequency ratio
+MutDiscRatio = 2
 
 # read in HDF5 file & create batch iterator for Discriminator training data
 train_file = h5py.File(train_h5file,'r')
@@ -88,13 +91,21 @@ inp = tf.placeholder(tf.float32, [None, 4, train_file['dnaseq'].shape[2], 1], na
 labels = tf.placeholder(tf.float32, [None, 2], name='label')
 tau = tf.constant(1.0, name='temperature') # temperature
     
+with tf.variable_scope('shared'):
+
+    ConvShared = Conv2D(64, [4, 5],
+                    activation='relu',
+                    kernel_regularizer='l2',
+                    padding='valid',
+                    name='convShared')
+
 with tf.variable_scope('mutator'):    
 
-    drop1 = conv_drop(inp,1,filter_height1,filter_width)
-    drop2 = conv_drop(drop1,2,filter_height2,filter_width)
-    drop3 = conv_pool_drop(drop2,3,filter_height2,filter_width)
+    conv1 = ConvShared(inp)
+    drop1 = conv_drop(conv1,2,filter_height2,filter_width)
+    drop2 = conv_pool_drop(drop1,3,filter_height2,filter_width)
 
-    fl1 = Flatten()(drop3)
+    fl1 = Flatten()(drop2)
     mutant_repr = Dense(50, name='mutant_representation', activation='tanh')(fl1)
 
     logits = Dense(train_file['dnaseq'].shape[2], name='prediction', \
@@ -134,11 +145,11 @@ with tf.variable_scope('discriminator'):
     dn2d = Dense(2, name='prediction', activation='softmax')
 
     # mutant probability (of being real)
-    p_mutant = dn2d(dn1(fl1(mp1(cn1(mutant)))))
+    p_mutant = dn2d(dn1(fl1(mp1(cn2(ConvShared(mutant))))))
     # p_mutant = dn2d(dn1(fl1(mp2(cn3(mp1(cn2(cn1(mutant))))))))
 
     # non-mutant/real probability (of being real)
-    p_nonmutant = dn2d(dn1(fl1(mp1(cn1(inp)))))
+    p_nonmutant = dn2d(dn1(fl1(mp1(cn2(ConvShared(inp))))))
     # p_nonmutant = dn2d(dn1(fl1(mp2(cn3(mp1(cn2(cn1(inp))))))))
 
     # create copies of mutant and non-mutant predictions (for accessing later)
@@ -174,9 +185,9 @@ M_loss = tf.reduce_mean(categorical_crossentropy(labels,p_mutant)) - mutator_los
 # gradient clipping
 # theta_D is list of D's params
 theta_D = [x for x in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES) 
-           if 'discriminator' in x.name]
+           if 'discriminator' in x.name or 'shared' in x.name]
 theta_M = [x for x in tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES) 
-           if 'mutator' in x.name]
+           if 'mutator' in x.name or 'shared' in x.name]
 clip_D = [p.assign(tf.clip_by_value(p, -0.01, 0.01)) for p in theta_D]
 
 D_solver = (tf.train.AdamOptimizer(learning_rate=1e-3)
@@ -205,41 +216,14 @@ print(MutTotalIterations)
 
 with sess.as_default():
 
-    # print('epochs\ttrain_acc\ttrain_loss\tval_acc\tval_loss')
-
-    # # train Discriminator first
-    # for i in range(DiscTotalIterations):
-    #     Disc_batch = Disc_batcher.next()
-    #     sess.run([D_solver],feed_dict={inp: batch['dnaseq'], \
-    #         labels: batch['labels'], K.learning_phase(): 1})
-
-    #     # log training and validation accuracy
-    #     if i%800 == 0:
-
-    #         epoch_num = float(i)/Disc_train_size*Disc_batch_size
-
-    #         train_acc,train_loss = sess.run([nonmutant_accuracy,D_loss],feed_dict={inp: batch['dnaseq'], \
-    #             labels: batch['labels'], K.learning_phase(): 0})
-
-    #         val_acc,val_loss = sess.run([nonmutant_accuracy,D_loss],feed_dict={inp: validation_dat, \
-    #             labels: validation_labels, K.learning_phase(): 0})
-
-    #         print('\t'.join([str(epoch_num),str(train_acc),str(train_loss), \
-    #             str(val_acc),str(val_loss)]))
-
-    # print(sess.run([p_nonmutant],feed_dict={inp: validation_dat,labels:validation_labels,K.learning_phase():0}))
-
-    # print('Finished training Discriminator.')
-    # print('--------------------')
-    # print('Training Mutator...')
-    # print('epochs\tMutator_loss\tMutator_accuracy\tMutant_change')
-
     # initialize model saver
     saver = tf.train.Saver(max_to_keep=2)
 
     # initialize writer to write output to file
     f = open('MAN_' + species_dir + '.output','w')
-    writer = csv.writer(f,delimiter='\t')
+    writer = csv.writer(f,delimiter='\t')  
+    writer.writerow(['Disc_examples','Disc_train_acc','Disc_train_loss','Disc_val_acc','Disc_val_loss',\
+        'Mut_examples','Mut_loss','Mut_acc','Mut_change'])
 
     # train Mutator
     temperature = 1.
@@ -250,14 +234,30 @@ with sess.as_default():
             tau: temperature, K.learning_phase(): 1})
 
         # train Discriminator
-        if i%3000 == 0:
+        if i%MutDiscRatio == 0:
             Disc_batch = Disc_batcher.next()
             sess.run([D_solver],feed_dict={inp: Disc_batch['dnaseq'], \
                 labels: Disc_batch['labels'], K.learning_phase(): 1})
 
+        # Disc_batch = Disc_batcher.next()
+        # sess.run([D_solver],feed_dict={inp: Disc_batch['dnaseq'], \
+        #     labels: Disc_batch['labels'], K.learning_phase(): 1})
+
+        # # train Discriminator
+        # if i%MutDiscRatio == 0:
+        #     Mut_batch = Mut_batcher.next()
+        #     M_acc_val,_ = sess.run([mutant_accuracy,M_solver],feed_dict={inp: Mut_batch['dnaseq'],labels: np.array([[1.,0.]]), \
+        #         tau: temperature, K.learning_phase(): 1})
+
+
+        if i%100 == 0:
             # determine number of epochs trained for Mutator, Discriminator
             Mut_epoch_num = float(i)/Mut_train_size*Mut_batch_size
-            Disc_epoch_num = float(i)/Disc_train_size*Disc_batch_size/3000.
+            Disc_epoch_num = float(i)/Disc_train_size*Disc_batch_size/float(MutDiscRatio)
+
+            # determine number of examples seen by Mutator, Discriminator
+            Mut_examples = i*Mut_batch_size
+            Disc_examples = i*Disc_batch_size/20.
 
             # get Discriminator statistics
             train_acc,train_loss = sess.run([nonmutant_accuracy,D_loss],feed_dict={inp: Disc_batch['dnaseq'], \
@@ -267,70 +267,31 @@ with sess.as_default():
                 labels: validation_labels, K.learning_phase(): 0})
 
             print('Discriminator Statistics:')
-            print('Discriminator Epochs: ' + str(Disc_epoch_num))
+            print('Discriminator Examples Seen: ' + str(Disc_examples))
             print('Training Accuracy: ' + str(train_acc))
             print('Training Loss: ' + str(train_loss))
             print('Validation Accuracy: ' + str(val_acc))
             print('Validation Loss: ' + str(val_loss))
             print('--------------------')
 
-            writer.writerow(['Discriminator Statistics:'])
-            writer.writerow(['Discriminator Epochs:',Disc_epoch_num])
-            writer.writerow(['Training Accuracy:',train_acc])
-            writer.writerow(['Training Loss:',train_loss])
-            writer.writerow(['Validation Accuracy:',val_acc])
-            writer.writerow(['Validation Loss:',val_loss])
-            writer.writerow(['--------------------'])
-
             # get Mutator statistics
             # print(sess.run(p_mutant,feed_dict={inp: Mut_batch['dnaseq'],K.learning_phase(): 0}))
-            M_acc_val,M_loss_val,M_change_val = sess.run([mutant_accuracy,M_loss,mutant_change],feed_dict={inp: Mut_batch['dnaseq'], \
-                labels: np.array([[1.,0.]]), tau: temperature, K.learning_phase(): 0})
+            M_acc_val,M_loss_val,M_change_val = sess.run([mutant_accuracy,M_loss,mutant_change],\
+                feed_dict={inp: Mut_batch['dnaseq'], labels: np.array([[1.,0.]]), \
+                tau: temperature, K.learning_phase(): 0})
             # print(str(epoch_num)+'\t'+str(M_loss_val) + '\t' + str(M_acc_val) + '\t' + str(M_change_val))
 
             print('Mutator Statistics:')
-            print('Mutator Epochs: ' + str(Mut_epoch_num))
+            print('Mutator Examples Seen: ' + str(Mut_examples))
             print('Mutator Loss: ' + str(M_loss_val))
             print('Mutator Accuracy: ' + str(M_acc_val))
             print('Mutator Change: ' + str(M_change_val))
             print('\n\n')
 
-            writer.writerow(['Mutator Statistics:'])
-            writer.writerow(['Mutator Epochs:',Mut_epoch_num])
-            writer.writerow(['Mutator Loss:',M_loss_val])
-            writer.writerow(['Mutator Accuracy:',M_acc_val])
-            writer.writerow(['Mutator Change:',M_change_val])
-            writer.writerow(['\n\n'])
+            # write all Discriminator and Mutator statistics to file
+            writer.writerow([Disc_examples,train_acc,train_loss,val_acc,val_loss,Mut_examples,M_loss_val,M_acc_val,M_change_val])
 
             # save model if current validation loss is lower than the previous lowest
             if M_loss_val < lowest_Mut_loss:
                 saver.save(sess,species_dir + '_Mutmodel')
                 lowest_val_loss = M_loss_val
-
-        # if i%5000 == 0:
-        #     print('---------------------')
-        #     print('Checking to see if Discriminator changes...')
-        #     val_acc,val_loss,prob_vals = sess.run([nonmutant_accuracy,D_loss,p_nonmutant],feed_dict={inp: validation_dat, \
-        #         labels: validation_labels, K.learning_phase(): 0})
-        #     prob_vals = sess.run(p_nonmutant,feed_dict={inp: validation_dat, \
-        #         labels: validation_labels, K.learning_phase(): 0})
-        #     print('Validation Accuracy: ' + str(val_acc))
-        #     print('Validation Loss: ' + str(val_loss))
-        #     print(prob_vals)
-# batcher = get_batch(dnaseq_dat, batch_size=batch_size)
-# 
-# for it in range(int(totalIterations/float(disc2mut_ratio))):
-#     for _ in range(disc2mut_ratio):
-#         xt= batcher.next()
-#         _, D_loss_curr, _ = sess.run([D_solver, D_loss, clip_D], \
-#                                      feed_dict={inp: xt, tau: temperature,K.learning_phase(): 1})
-#     _, M_loss_curr, acc, np_mutloss = sess.run([M_solver, M_loss, disc_acc, mutator_loss], feed_dict={inp: xt, tau: temperature, K.learning_phase(): 1})
-#     # blah = xt
-#     # boo = sess.run(mutant,feed_dict={inp: xt, tau: temperature,K.learning_phase(): 0})
-#     # print(boo)
-#     if it % 100 == 0:
-
-#         epoch_num = it*float(disc2mut_ratio)/train_size*batch_size
-#         print('{} Mutator loss: {} \t and mut loss: {}'.format(epoch_num, M_loss_curr, np_mutloss))
-#         print('{} Discriminator loss: {} \t and accuracy: {}'.format(epoch_num, D_loss_curr, acc))
-#         print('\n')

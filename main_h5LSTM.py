@@ -27,11 +27,11 @@ from sklearn.metrics import hamming_loss
 promoter_length = 500
 
 # training parameters
-epochs = 5
+epochs = 20
 batch_size = 50
 
 # CNN hyperparameters
-num_filters = 80
+num_filters = 50
 pool_size = 2
 pool_stride = 2
 filter_height1 = 4
@@ -39,8 +39,12 @@ filter_height2 = 1
 filter_width = 5
 learning_rate = 0.0001
 
+# LSTM hyperparameters
+n_steps = 20 # timesteps 
+n_hidden = 128 # hidden layer num of features
+
 species_dir = str(sys.argv[1])
-outfile_name = species_dir + ''
+outfile_name = species_dir + 'LSTMConvPar'
 print(species_dir)
 
 train_h5file = 'data/h5datasets/' + str(species_dir) + '/train.h5'
@@ -51,7 +55,7 @@ print('Batch Size: ' + str(batch_size))
 print('Number of Filters: ' + str(num_filters))
 print('Filter Width: ' + str(filter_width))
 
-def conv_drop(input_tensor,layer_num,filter_height,filter_width,kernelReg=None,dilation=False):
+def conv_drop(input_tensor,layer_num,filter_height,filter_width,num_filters,kernelReg=None,dilation=False):
     if dilation:
         conv = Conv2D(num_filters,[filter_height,filter_width],activation='linear', \
                 kernel_regularizer=kernelReg,padding='valid',dilation_rate=dilation,\
@@ -64,7 +68,7 @@ def conv_drop(input_tensor,layer_num,filter_height,filter_width,kernelReg=None,d
 
     return drop
 
-def conv_pool_drop(input_tensor,layer_num,filter_height,filter_width,kernelReg=None,dilation=False):
+def conv_pool_drop(input_tensor,layer_num,filter_height,filter_width,num_filters,kernelReg=None,dilation=False):
     if dilation:
         conv = Conv2D(num_filters,[filter_height,filter_width],activation='linear', \
                 kernel_regularizer=kernelReg,padding='valid',dilation_rate=dilation,\
@@ -82,16 +86,59 @@ def conv_pool_drop(input_tensor,layer_num,filter_height,filter_width,kernelReg=N
 
     return drop
 
-def LSTMConvBranches(input_tensor,filter_width,num_units,kernelReg=None,dilation=None):
+def RNN(x,n_steps,n_hidden,n_classes,return_seq=False):
+    # input shape: (batch_size, n_steps, n_input)
+    # converted shape:'n_steps' tensors list of shape (batch_size, n_input)
+
+    # define weights, biases for LSTM component
+    weights = {'out': tf.Variable(tf.random_normal([n_hidden, n_classes]))}
+    biases = {'out': tf.Variable(tf.random_normal([n_classes]))}
+
+    # Unstack to get a list of 'n_steps' tensors of shape (batch_size, n_input)
+    x = tf.unstack(x, n_steps, 1)
+    lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
+    outputs, states = tf.contrib.rnn.static_rnn(lstm_cell, x, dtype=tf.float32)
+
+    if return_seq:
+        return [tf.matmul(outp, weights['out']) + biases['out'] for outp in outputs]
+    else:
+        return tf.matmul(outputs[-1], weights['out']) + biases['out']
+
+def multiRNN(x,n_steps,n_hidden,n_classes,numLayers,return_seq=False):
+    # input shape: (batch_size, n_steps, n_input)
+    # converted shape:'n_steps' tensors list of shape (batch_size, n_input)
+
+    # define weights, biases for LSTM component
+    weights = {'out': tf.Variable(tf.random_normal([n_hidden, n_classes]))}
+    biases = {'out': tf.Variable(tf.random_normal([n_classes]))}
+
+    # Unstack to get a list of 'n_steps' tensors of shape (batch_size, n_input)
+    x = tf.unstack(x, n_steps, 1)
+    lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
+    outputs, states = tf.contrib.rnn.static_rnn(lstm_cell, x, dtype=tf.float32)
+
+    rnn_cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.BasicLSTMCell(n_hidden,forget_bias=1.0) \
+        for i in range(numLayers)])
+
+    if return_seq:
+        return [tf.matmul(outp, weights['out']) + biases['out'] for outp in outputs]
+    else:
+        return tf.matmul(outputs[-1], weights['out']) + biases['out']
+
+def LSTMConvBranches(input_tensor,filter_width,num_filters,kernelReg=None,dilation=None):
 
     # LSTM branch
-    lstm1 = LSTM(num_units,implementation=2)(tf.squeeze(tf.reshape(dna,\
-        [tf.shape(dna)[0],tf.shape(dna)[2],4,1]),[3]))
-    lstm_drop1 = Dropout(0.5)(lstm1)
+    conv1 = Conv2D(8,[4,5],activation='linear',
+                    name='convTrans_1',padding='valid')(dna)
+    leak1 = LeakyReLU(alpha=.001)(conv1)
+    pool1 = AveragePooling2D((1,2),strides=(1,2),name='AvgPoolTrans_1',padding='same')(leak1) 
+    conv2 = Conv2D(1,[1,1],activation='linear',name='convTrans1x1',padding='same')(pool1)
+    reshapedSeq = tf.reshape(tf.squeeze(conv2,[1,3]),[tf.shape(conv2)[0],31,8])
+    lstm1 = RNN(reshapedSeq,n_steps)
 
     # Convolutional branch
-    drop1 = conv_pool_drop(input_tensor,1,4,filter_width,kernelReg=kernelReg,dilation=dilation)
-    drop2 = conv_pool_drop(drop1,2,1,filter_width,kernelReg=kernelReg,dilation=dilation)
+    drop1 = conv_pool_drop(input_tensor,1,4,filter_width,num_filters,kernelReg=kernelReg,dilation=dilation)
+    drop2 = conv_pool_drop(drop1,2,1,filter_width,num_filters,kernelReg=kernelReg,dilation=dilation)
     flat1 = Flatten()(drop2)
     convFC = Dense(num_units,activation='linear')(flat1)
 
@@ -101,7 +148,7 @@ def LSTMConvBranches(input_tensor,filter_width,num_units,kernelReg=None,dilation
     print(stacked_layers)
 
     # convolutional layer
-    conv_stacked = conv_pool_drop(stacked_layers,'stack',2,filter_width)
+    conv_stacked = conv_pool_drop(stacked_layers,'stack',2,filter_width,num_filters)
 
     return conv_stacked
 
@@ -120,6 +167,7 @@ validation_labels = validation_file['species_labels'][0:val_datsize]
 tbCallBack = callbacks.TensorBoard(log_dir='./blah', histogram_freq=0, \
         write_graph=True, write_images=True)
 
+# get training sample size and number of species
 train_size = train_file.values()[0].shape[0]
 num_species = train_file['species_labels'].shape[1]
 
@@ -133,27 +181,50 @@ labels = tf.placeholder(tf.float32,shape=(None,num_species),name='label')
 ### MODEL #####################################################################
 ###############################################################################
 
-# # LSTM layer
-# lstm1 = LSTM(128,implementation=2)(tf.squeeze(drop1,[1]))
+# LSTM
+reshapedDNA = tf.concat(tf.split(tf.squeeze(dna,[3]),int(promoter_length/n_steps),2),0)
+reshapedDNA = tf.reshape(reshapedDNA,[tf.shape(reshapedDNA)[0],tf.shape(reshapedDNA)[2],4])
+with tf.variable_scope('LSTM1'):
+    lstm1 = RNN(reshapedDNA,n_steps,n_hidden,32)
+
+n_steps2 = int(promoter_length/n_steps)
+reshapedLSTM1 = tf.reshape(lstm1,[tf.shape(dna)[0],n_steps2,32])
+with tf.variable_scope('LSTM2'):
+    lstm2 = RNN(reshapedLSTM1,n_steps2,n_hidden,64)
+
+# LSTMFlat = Flatten()(lstm2)
+# LSTMRep = Dense(100,activation='relu',name='LSTMRep')(lstm2)
+
+# lstm1 = RNN(tf.squeeze(tf.reshape(dna,[tf.shape(dna)[0],tf.shape(dna)[2],4,1]),[3]),\
+#     weights,biases)
 # lstm_drop1 = Dropout(0.5)(lstm1)
 
-# # reshape input tensor for LSTM
-lstm1 = LSTM(128,return_sequences=True,implementation=2)(tf.squeeze(tf.reshape(dna,[tf.shape(dna)[0],promoter_length,4,1]),[3]))
-lstm_drop1 = Dropout(0.5)(lstm1)
-# lstm2 = LSTM(128,return_sequences=True,implementation=2)(lstm_drop1)
-# lstm_drop2 = Dropout(0.5)(lstm2)
+# # LSTM branch
+# conv1 = Conv2D(64,[4,5],activation='linear',
+#                 name='convTrans_1',padding='valid')(dna)
+# leak1 = LeakyReLU(alpha=.001)(conv1)
+# pool1 = AveragePooling2D((1,2),strides=(1,2),name='AvgPoolTrans_1',padding='same')(leak1) 
+# conv2 = Conv2D(1,[1,1],activation='linear',name='convTrans1x1',padding='same')(pool1)
+# print(conv2)
+# reshapedSeq = tf.reshape(tf.squeeze(conv2,[1,3]),[tf.shape(conv2)[0],31,8])
+# lstm1 = RNN(reshapedSeq,n_steps,n_hidden,100)
 
-# drop1 = conv_pool_drop(dna,1,filter_height1,filter_width)
-# drop2 = conv_pool_drop(drop1,2,filter_height2,filter_width)
-# drop3 = conv_pool_drop(drop2,3,filter_height2,filter_width)
+# lstm_stacked = multiRNN(reshapedSeq,n_steps,n_hidden,100,2)
 
-# lstm1 = LSTM(128,return_sequences=True,implementation=2)(tf.squeeze(drop1,[1]))
-# lstm_drop1 = Dropout(0.5)(lstm1)
+# # # convolutional branch
+# drop1 = conv_pool_drop(dna,1,filter_height1,filter_width,num_filters)
+# drop2 = conv_pool_drop(drop1,2,filter_height2,filter_width,num_filters)
+# # drop3 = conv_pool_drop(drop2,3,filter_height2,filter_width,num_filters)
+# ConvFlat = Flatten()(drop2)
+# ConvRep = Dense(100,activation='relu',name='ConvRep')(ConvFlat)
 
-# lstm_conv = LSTMConvBranches(dna,filter_width,128)
+# stack LSTM and convolutional branch outputs
+# stacked_layers = tf.stack([LSTMRep,ConvRep],1)
+# stacked_layers = tf.stack([lstm1,ConvRep],1)
 
-flat = Flatten()(lstm_drop1)
-FC = Dense(50,activation='relu',name='representation')(flat)
+
+# flat = Flatten()(reshapedLSTM)
+FC = Dense(50,activation='relu',name='representation')(lstm2)
 preds = Dense(num_species,activation='softmax')(FC)
 
 ###############################################################################

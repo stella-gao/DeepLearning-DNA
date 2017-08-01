@@ -7,6 +7,7 @@ import matplotlib.patches as mpatches
 
 import tensorflow as tf
 from keras.models import model_from_json
+from model import *
 
 ### METADATA ##################################################################
 
@@ -132,7 +133,7 @@ def get_representations(model_name,model_dir,testdata_file,write2file=False):
 	dna = graph.get_tensor_by_name("dna:0")
 	labels = graph.get_tensor_by_name("label:0")
 	dropout1 = graph.get_tensor_by_name("dropout_1/keras_learning_phase:0")
-	opt = graph.get_tensor_by_name('representation/Relu:0')
+	rep = graph.get_tensor_by_name('representation/Relu:0')
 	preds = graph.get_tensor_by_name('dense_1/Softmax:0')
 
 	# load test data
@@ -145,19 +146,22 @@ def get_representations(model_name,model_dir,testdata_file,write2file=False):
 	correct_pred = tf.equal(tf.argmax(preds, 1), tf.argmax(labels, 1))
 	accuracy = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
 
-	# run session and get output of representational layer
-	feed_dict = {dna: test_dat, labels: test_labels, dropout1: 0}
-	rep_output,acc = sess.run([opt,accuracy],feed_dict)
-
-	print(acc)
-
 	if write2file:
-		np.savetxt(model_name + '_rep.txt',rep_output,delimiter='\t')
+		for i in range(0,test_dat.shape[0],50):
+			# run session and get output of representational layer
+			feed_dict = {dna: test_dat[i:i+50], labels: test_labels[i:i+50], dropout1: 0}
+			rep_output = sess.run(rep,feed_dict)
+
+			f = open(model_name + '_rep.txt','a')
+			writer = csv.writer(f,delimiter='\t')
+			for j in range(rep_output.shape[0]):
+				writer.writerow(rep_output[j])
+			f.close()
 
 	else:
 		return rep_output
 
-def getPredictions(model_name,model_dir,testdata_file,label_names):
+def getPredictions(model_name,model_dir,testdata_file,label_names,write2file=False):
 	'''restores a pre-trained model stored in the inputted directory and tests
 	it on a set of test data given by an inputted H5 file name, returning the
 	raw predictions, labeled raw predictions, and confusion matrix'''
@@ -181,19 +185,30 @@ def getPredictions(model_name,model_dir,testdata_file,label_names):
 
 	# load test data
 	f = h5py.File(testdata_file,'r')
-	test_dat = f['dnaseq'][0:10000]
-	test_labels = f['species_labels'][0:10000]
+	test_dat = f['dnaseq'][:]
+	test_labels = f['species_labels'][:]
+	f.close()
 
-	# run session and get output of representational layer
-	feed_dict = {dna: test_dat, labels: test_labels, dropout1: 0}
-	predictions = sess.run(preds,feed_dict)
+	prediction_names = []
+	if write2file:
+		for i in range(0,test_dat.shape[0],50):
+			# run session and get output of representational layer
+			feed_dict = {dna: test_dat[i:i+50], labels: test_labels[i:i+50], dropout1: 0}
+			pred_probs = sess.run(preds,feed_dict)
+
+			f = open(model_name + '_predProbs.txt','a')
+			writer = csv.writer(f,delimiter='\t')
+			for j in range(pred_probs.shape[0]):
+				writer.writerow(pred_probs[j])
+			f.close()
+
+			prediction_names.extend([label_names[np.argmax(pred_probs[i])] \
+				for i in range(pred_probs.shape[0])])
 
 	# truelabel_names = f['species'][0:10000]
 	# truelabel_names = [str(i) for i in truelabel_names]
 	truelabel_names = [label_names[np.argmax(label)] for label in test_labels]
-	prediction_names = [label_names[np.argmax(pred)] for pred in predictions]
-
-	f.close()
+	# prediction_names = [label_names[np.argmax(pred)] for pred in predictions]
 
 	return predictions,confusion_matrix(truelabel_names,prediction_names,\
 		labels=label_names)
@@ -202,8 +217,8 @@ def calcPrecisionRecall(cm):
 	'''calculates precision and recall from an inputted confusion matrix'''
 
 	true_pos = np.diag(cm)
-	precision = np.sum(true_pos / np.sum(cm, axis=0))
-	recall = np.sum(true_pos / np.sum(cm, axis=1))
+	precision = true_pos / np.sum(cm, axis=0)
+	recall = true_pos / np.sum(cm, axis=1)
 
 	return precision, recall
 	
@@ -366,7 +381,7 @@ def deepliftAttrs(keras_model,dnaseq):
 
 	return scores
 
-### DIMENSIONALITY REDUCTION ##################################################
+### DIMENSIONALITY REDUCTION AND CLUSTER ANALYSIS #############################
 
 def write_projection(representation_file,output_file,method='PCA'):
 	'''performs an inputted dimensionality reduction method on the output of 
@@ -376,7 +391,7 @@ def write_projection(representation_file,output_file,method='PCA'):
 
 	if method == 'PCA':
 		from sklearn.decomposition import PCA
-		model = PCA(n_components=2)
+		model = PCA(n_components=X.shape[1])
 		transformed_X = model.fit_transform(X)
 
 	elif method == 'tSNE':
@@ -405,7 +420,7 @@ def GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4):
 	# fit GMM to data and predict posterior probabilities per each component/species
 	gmm = GaussianMixture(n_components=num_clusters, covariance_type='full').fit(X)
 	preds = gmm.predict_proba(X)
-	print(gmm.means_)
+
 	# identify genes that are "between" clusters and the clusters they are between
 	combos = list(itertools.combinations(range(num_clusters),2))
 	betw_genes = {i:[] for i in combos}
@@ -420,18 +435,146 @@ def GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4):
 
 	return betw_genes
 
+def getUncertainPredictions(predProb_file,h5_file,species_list,prob_threshold=0.45):
+	'''takes an input of prediction probabilities that correspond to labels
+	in an accompanying HDF5 file and returns a dictionary of genes that have high
+	probabilities of belonging to more than one species indexed by species name'''
+
+	# load prediction probability data
+	pred_probs = np.loadtxt(predProb_file,delimiter='\t')
+
+	# open HDF5 file to get gene names, species labels
+	f = h5py.File(h5_file,'r')
+	genes = f['genes']
+	labels = f['species_labels']
+
+	# get indices of "uncertain" promoters in HDF5 file
+	uncertainGeneIdx = [i for i in range(pred_probs.shape[0]) \
+		if sum(pred_probs[i] >= prob_threshold) > 1]
+
+	gene_dict = {species:[] for species in species_list}
+	for i in uncertainGeneIdx:
+		gene_dict[species_list[np.argmax(labels[i])]].append(str(genes[i]))
+
+	f.close()
+
+	return gene_dict
+
+def getCertainPredictions(predProb_file,h5_file,species_list,prob_threshold=0.95):
+	'''takes an input of prediction probabilities that correspond to labels
+	in an accompanying HDF5 file and returns a dictionary of genes that have high
+	probabilities of belonging to only a single species indexed by species name'''
+
+	# load prediction probability data
+	pred_probs = np.loadtxt(predProb_file,delimiter='\t')
+
+	# open HDF5 file to get gene names, species labels
+	f = h5py.File(h5_file,'r')
+	genes = f['genes']
+	labels = f['species_labels']
+
+	# get indices of "uncertain" promoters in HDF5 file
+	certainGeneIdx = [i for i in range(pred_probs.shape[0]) \
+		if sum(pred_probs[i] >= prob_threshold) > 0]
+
+	gene_dict = {species:[] for species in species_list}
+	for i in certainGeneIdx:
+		gene_dict[species_list[np.argmax(labels[i])]].append(str(genes[i]))
+
+	f.close()
+
+	return gene_dict
+
+def clusterAccuracy(data_file,h5_file,num_clusters):
+	'''clusters inputted projected representations and determines the accuracy 
+	of the cluster assignments with respect to the actual labels (i.e. species) 
+	given to the genes'''
+
+	from sklearn.mixture import GaussianMixture
+
+	# get species labels and convert to list of indices corresponding to label
+	f = h5py.File(h5_file,'r')
+	labels = f['species_labels'][:]
+	labels = np.argmax(labels,axis=1)
+
+	# load representational layer output or its projection
+	X = np.loadtxt(data_file,delimiter='\t')
+
+	# fit GMM to data and predict posterior probabilities per each component/species
+	gmm = GaussianMixture(n_components=num_clusters, covariance_type='full').fit(X)
+	pred_probs = gmm.predict_proba(X)
+	preds = np.argmax(pred_probs,axis=1)
+
+	return np.mean(labels==preds)
+
+def getCertainSeq(certainGenes_file,uncertainGenes_file,promoterSeq_file,promoter_length,outfile):
+	'''retrieves a list of genes w/ "certain" predictions and genes w/ "uncertain"
+	predictions as well as their promoter sequences from an inputted sequence
+	file; outputs their sequences to an HDF5 file with one-hot encoded labels 
+	concerning their prediction un/certainty'''
+
+	with open(certainGenes_file,'r') as f:
+		reader = csv.reader(f,delimiter='\t')
+		certainGenes = [line[0] for line in reader]
+
+	with open(uncertainGenes_file,'r') as f:
+		reader = csv.reader(f,delimiter='\t')
+		uncertainGenes = [line[0] for line in reader]	
+
+	seq_dict = read_fasta_seq(promoterSeq_file,certainGenes + uncertainGenes)
+	gene_windows = getrandWindow(seq_dict,promoter_length)
+	gene_list = certainGenes + uncertainGenes
+	num_windows = [len(certainGenes),len(uncertainGenes)]
+	
+	labels = getLabels(num_windows)
+
+	print('writing...')
+	dt = h5py.special_dtype(vlen=unicode)
+
+	f = h5py.File(outfile,'w')
+	f.create_dataset('dnaseq',data=gene_windows,dtype='f',compression='gzip')
+	f.create_dataset('labels',data=labels,dtype='f',compression='gzip')
+	f.create_dataset('genes',data=gene_list,dtype=dt,compression='gzip')
+	f.close()
+
+
+certainGenes_file = 'results/clustering/gene_sets/Mouse_Human_certainHuman95.txt'
+uncertainGenes_file = 'results/clustering/gene_sets/Mouse_Human_uncertainHuman45.txt'
+promoterSeq_file = 'data/my_promoters/Human1000.fa.txt'
+promoter_length = 500
+outfile = 'Human_certain.h5'
+getCertainSeq(certainGenes_file,uncertainGenes_file,promoterSeq_file,promoter_length,outfile)
+
+certainGenes_file = 'results/clustering/gene_sets/Mouse_Human_certainMouse95.txt'
+uncertainGenes_file = 'results/clustering/gene_sets/Mouse_Human_uncertainMouse45.txt'
+promoterSeq_file = 'data/my_promoters/Mouse1000.fa.txt'
+promoter_length = 500
+outfile = 'Mouse_certain.h5'
+getCertainSeq(certainGenes_file,uncertainGenes_file,promoterSeq_file,promoter_length,outfile)
+
+# clusterAccuracy('results/Mouse_Human/Mouse_Human_dense_allgenes_repPCA.txt','data/h5datasets/Mouse_Human/all.h5',2)
+
+# model_name = 'Mouse_Human_dense_model' # model is densely connected network
+# model_dir = 'results/Mouse_Human/'
+# testdata_file = 'data/h5datasets/Mouse_Human/all.h5'
+# label_names = ['Mouse','Human']
+
+# # getPredictions(model_name,model_dir,testdata_file,label_names,write2file=True)
+
+# species_list = label_names
+# predProb_file = 'Mouse_Human_dense_model_predProbs.txt'
+# h5_file = testdata_file
+# blah = getUncertainPredictions(predProb_file,h5_file,species_list,prob_threshold=0.4)
+# # get representations for all genes and write to file
+# get_representations(model_name,model_dir,testdata_file,write2file=True)
+
+# write_metadata(['Mouse','Human'],'Mouse_Human','all.h5')
+
 # representation_file = 'all8_filter2rep.txt'
 # metadata_file = 'all8_metadata.tsv'
 # index_set = [2,3]
 # output_file = 'all8_MouseHuman'
 # filterLabels(representation_file,metadata_file,index_set,output_file)
-
-# write_projection('all8_rep.txt','all8_rep_pca.txt')
-# json_file = open('sCer_dHansmodel.json','r')
-# loaded_model_json = json_file.read()
-# json_file.close()
-# loaded_model = model_from_json(loaded_model_json)
-# loaded_model.load_weights('sCer_dHansmodel.h5')
 
 # sess = tf.Session()
 # saver = tf.train.import_meta_graph(model_dir + model_name + '.meta')
@@ -462,20 +605,6 @@ def GMM_analysis(data_file,h5_file,num_clusters,prob_threshold=0.4):
 # model_name = 'sCer_cEleg_Mouse_Human_model'
 # model_dir = 'results/saved_models/sCer_cEleg_Mouse_Human/'
 # testdata_file = 'data/h5datasets/sCer_cEleg_Mouse_Human/validation.h5'
-
-# # label_names = ['sCer','cEleg','Mouse','Human']
-# label_names = ['ox','hypox','ER','starv']
-# model_name = 'MamGO4stress_model'
-# model_dir = ''
-# testdata_file = 'data/h5datasets_GO/MamGO4stress/validation.h5'
-# a = getPredictions(model_name,model_dir,testdata_file,label_names)
-# print a[1]
-# a = get_representations(model_name,model_dir,testdata_file)
-
-# file_name = 'all.h5'
-# write_metadata(['sCer','sPom'],'sCer_sPom',file_name)
-# d = np.loadtxt('sCer_sPom_rep.txt',delimiter='\t')
-
 
 # write_metadata(['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','sBoul'],'all8','validation.h5')
 # write_metadata(['sCer','cEleg','Mouse','Human'],'all4_unmasked','validation.h5')
