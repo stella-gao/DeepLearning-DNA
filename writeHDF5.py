@@ -107,9 +107,9 @@ def combine_species(species_list,upstream_length,promoter_length,window_step,sam
 		min_datsize = min([len(gene_window[1]) for gene_window in gene_windows])
 
 		# determine number of windows per gene to select for each species
-		train_num_windows_per_gene = [max(2,min(10,int(float(min_datsize)/len(seq_dict.keys())))) \
+		train_num_windows_per_gene = [max(1,min(10,int(float(min_datsize)/len(seq_dict.keys())))) \
 			for seq_dict in seq_dicts]
-		val_num_windows_per_gene = [max(2,int(float(min_datsize)/len(seq_dict.keys()))) \
+		val_num_windows_per_gene = [max(1,int(float(min_datsize)/len(seq_dict.keys()))) \
 			for seq_dict in seq_dicts]
 
 		# get indices for training and validation datasets
@@ -334,6 +334,84 @@ def splitHDF(infile,outfile_name,floatkey_list,unicodekey_list):
 	trainFile.close()
 	valFile.close()
 
+def convertLabels(labels):
+	'''converts an array of multi-label vectors into array containing arrays
+	of binary labels'''
+
+	converted_labels = []
+	for i in range(labels.shape[0]):	
+		bin_labels = []
+		for j in range(labels.shape[1]):
+			if labels[i][j] == 1:
+				bin_labels.append(np.array([1.,0.]))
+			else:
+				bin_labels.append(np.array([0.,1.]))
+		converted_labels.append(np.array(bin_labels))
+
+	return np.array(converted_labels)
+
+
+def rewriteHDF5_binary(h5_file,dir_name): # multi-label binary encoding
+
+	f = h5py.File(dir_name + h5_file,'r')
+	g = h5py.File(dir_name + h5_file + '_new','w')
+
+	dt = h5py.special_dtype(vlen=unicode)
+
+	species_labels = convertLabels(f['species_labels'][:])
+
+	g.create_dataset('dnaseq',data=f['dnaseq'][:],dtype='f',compression='gzip')
+	g.create_dataset('species_labels',data=species_labels,dtype='f',compression='gzip')
+	g.create_dataset('genes',data=f['genes'][:],dtype=dt,compression='gzip')
+	g.create_dataset('species',data=f['species'][:],dtype=dt,compression='gzip')
+
+	f.close()
+	g.close()
+
+def evenHDF5(h5_file,dir_name,num_samples):
+	'''takes as input an HDF5 file containing species information and samples
+	from the data to generate a subset of the original file with an even number
+	of species represented'''
+
+	f = h5py.File(dir_name + h5_file,'r')
+	newfile_name = h5_file.split('.')[0] + '_even.h5'
+	g = h5py.File(dir_name + newfile_name,'w')
+
+	labelIdx_list = np.argmax(f['species_labels'][:],axis=1)
+	sampleIdx = []
+
+	count_dict = {labelIdx: 0 for labelIdx in list(set(list(labelIdx_list)))}
+	i = 0
+	while sum(np.array(count_dict.values()) == num_samples) < f['species_labels'].shape[1]:
+		labelIdx = labelIdx_list[i]
+		if count_dict[labelIdx] < num_samples:
+			sampleIdx.append(i)
+			count_dict[labelIdx] += 1
+		i += 1
+
+	sampleIdx = np.array(sampleIdx)
+
+	dt = h5py.special_dtype(vlen=unicode)
+
+	g.create_dataset('dnaseq',data=f['dnaseq'][:][sampleIdx],\
+		dtype='f',compression='gzip')
+	g.create_dataset('species_labels',data=f['species_labels'][:][sampleIdx],\
+		dtype='f',compression='gzip')
+	g.create_dataset('genes',data=f['genes'][:][sampleIdx],\
+		dtype=dt,compression='gzip')
+	g.create_dataset('species',data=f['species'][:][sampleIdx],\
+		dtype=dt,compression='gzip')
+
+	f.close()
+	g.close()
+
+# evenHDF5('validation.h5','data/h5datasets/all10/',1000)
+rewriteHDF5_binary('all.h5','data/h5datasets/all10/')
+
+# dir_name = 'data/h5datasets/all10/'
+# rewriteHDF5_binary('train.h5',dir_name)
+# rewriteHDF5_binary('validation.h5',dir_name)
+
 # floatkey_list = ['dnaseq','labels']
 # unicodekey_list = ['genes']
 # splitHDF('data/h5datasets/certain_Human/Human_certain.h5','Human',floatkey_list,unicodekey_list)
@@ -352,16 +430,16 @@ def splitHDF(infile,outfile_name,floatkey_list,unicodekey_list):
 # rewriteHDF5('train.h5',dir_name)
 # rewriteHDF5('validation.h5',dir_name)
 
-upstream_length = 1000
-promoter_length = 500
-window_step = 50
+# upstream_length = 1000
+# promoter_length = 500
+# window_step = 100
 
-# species_list = ['Mouse','Human']
-# combine_species_allgenes(species_list,upstream_length,promoter_length)
+species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','Chicken','aThal','Lizard']
+combine_species_allgenes(species_list,upstream_length,promoter_length)
 
-# species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','sBoul']
-# species_list = ['Mouse','Human']
-# combine_species(species_list,upstream_length,promoter_length,window_step,3,False)
+# # species_list = ['Mouse','Human']
+# species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','Chicken','aThal','Lizard']
+# combine_species(species_list,upstream_length,promoter_length,window_step,2,False)
 
 # species_list = ['sCer','sPom']
 # combine_species(species_list,upstream_length,promoter_length,window_step,3,True)

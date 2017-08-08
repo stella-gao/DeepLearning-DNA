@@ -70,8 +70,8 @@ def plotDiscMutAcc(progress_file):
 	plt.show()
 
 
-# X = np.loadtxt('all8_rep_pca.txt',delimiter='\t')
+X = np.loadtxt('results/all10/all10_rep_tSNE.txt',delimiter='\t')
 
-# metadata_file = 'all8_metadata.tsv'
+metadata_file = 'results/all10/all10_metadata.tsv'
 
-# plot_bygroup(X,metadata_file,8)
+plot_bygroup(X,metadata_file,8)

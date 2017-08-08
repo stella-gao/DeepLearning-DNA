@@ -18,7 +18,6 @@ def readFASTA(file_name,gene_list=None):
         for line in reader:
 	        if '>' in line[0]:
 	            if len(seq) > 0:
-	            	print(len(seq_dict))
 	                seq_dict[gene_name.lower()] = \
 	                    one_hot_encode_sequence(seq)
 
@@ -82,10 +81,10 @@ def writeDNAplusLabels2HDF5(seq_file1,seq_file2,outfile_name,real_file=False,bal
 	f.create_dataset('labels',data=all_labels[split_pt:],compression='gzip')
 	f.close()	
 
-seq_file1 = 'data/my_promoters/Human200.fa.txt' # 'data/simulated_dna/TAL1.fa'
+seq_file1 = 'data/simulated_dna/TAL1degen.fa' #'data/my_promoters/Human200.fa.txt' 
 seq_file2 = 'data/simulated_dna/background.fa'
 
-writeDNAplusLabels2HDF5(seq_file1,seq_file2,'Human200_background',balance=True)
+writeDNAplusLabels2HDF5(seq_file1,seq_file2,'TAL1degen_background',balance=True)
 # writeDNA2HDF5('data/simulated_dna/TAL1.fa','data/simulated_dna/TAL1.h5')
 
 # writeDNA2HDF5('data/simulated_dna/background.fa','data/simulated_dna/background.h5')

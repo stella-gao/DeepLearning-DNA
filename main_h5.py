@@ -64,8 +64,8 @@ validation_h5file = 'data/h5datasets/' + str(species_dir) + '/validation.h5'
 promoter_length = 500
 
 # training parameters
-epochs = 15
-batch_size = 50
+epochs = 30
+batch_size = 200
 
 # CNN hyperparameters
 num_filters = 80
@@ -90,14 +90,14 @@ train_batcher = train_data.batcher()
 validation_file = h5py.File(validation_h5file,'r')
 val_datsize = min(10000,validation_file.values()[0].shape[0])
 validation_dat = validation_file['dnaseq'][0:val_datsize]
-validation_labels = validation_file['labels'][0:val_datsize]
+validation_labels = validation_file['species_labels'][0:val_datsize]
 
 # create CallBack Tensorboard object
 tbCallBack = callbacks.TensorBoard(log_dir='./blah', histogram_freq=0, \
         write_graph=True, write_images=True)
 
 train_size = train_file.values()[0].shape[0]
-num_species = train_file['labels'].shape[1]
+num_species = train_file['species_labels'].shape[1]
 
 # define placeholder for DNA sequences (represented via one-hot encoding)
 dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='dna')
@@ -145,7 +145,7 @@ with sess.as_default():
     for i in range(totalIterations):
         batch = train_batcher.next()
         sess.run([train_step],feed_dict={dna: batch['dnaseq'], \
-            labels: batch['labels'], K.learning_phase(): 1})
+            labels: batch['species_labels'], K.learning_phase(): 1})
 
         # log training and validation accuracy
         if i%1000 == 0:
@@ -153,7 +153,7 @@ with sess.as_default():
             epoch_num = i/train_size*batch_size
 
             train_acc,train_loss = sess.run([accuracy,loss],feed_dict={dna: batch['dnaseq'], \
-                labels: batch['labels'], K.learning_phase(): 0})
+                labels: batch['species_labels'], K.learning_phase(): 0})
 
             val_acc,val_loss = sess.run([accuracy,loss],feed_dict={dna: validation_dat, \
                 labels: validation_labels, K.learning_phase(): 0})

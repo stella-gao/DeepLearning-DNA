@@ -23,13 +23,13 @@ from keras import callbacks
 from keras.utils.io_utils import HDF5Matrix
 from sklearn.metrics import hamming_loss
 
-species_dir = 'all8'
+species_dir = 'all10'
 model_dir = ''
-model_name = 'all8_model'
-train_h5file = 'data/h5datasets/all8/train.h5'
-validation_h5file = 'data/h5datasets/all8/validation.h5'
+model_name = 'all8_dense_model'
+train_h5file = 'data/h5datasets/all10/train.h5'
+validation_h5file = 'data/h5datasets/all10/validation.h5'
 
-outfile_name = 'ConvLSTM'
+outfile_name = 'all10_dense'
 
 # training parameters
 epochs = 25

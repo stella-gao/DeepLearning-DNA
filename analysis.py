@@ -19,14 +19,15 @@ def write_metadata(label_set,data_dir,file_name):
 	g = open(data_dir + '_metadata.tsv','w')
 	writer = csv.writer(g,delimiter='\t')
 
-	writer.writerow(['index','species_label'])
+	writer.writerow(['index','species_label','gene_names'])
 	if file_name == 'validation.h5':
 		val_datsize = min(10000,f['species_labels'].shape[0])
 	else:
 		val_datsize = f['species_labels'].shape[0]
 	for i in range(val_datsize):
 		labelIdx = list(f['species_labels'][i]).index(max(f['species_labels'][i]))
-		writer.writerow([labelIdx,label_set[labelIdx]])
+		gene_name = str(f['genes'][i])
+		writer.writerow([labelIdx,label_set[labelIdx],gene_name])
 
 	f.close()
 	g.close()
@@ -65,7 +66,6 @@ def write_metadataGO(label_set,data_dir,multiple=True):
 	f.close()
 	g.close()
 
-
 def filterLabels(representation_file,metadata_file,index_set,output_file):
 	'''takes in a .txt file of representational layer outputs along with the
 	corresponding raw data file (in H5 format) and filters out the 
@@ -94,6 +94,44 @@ def filterLabels(representation_file,metadata_file,index_set,output_file):
 	f.close()
 	g.close()
 
+def getSelectedPoints(state_file,metadata_file,filter_species=False,write2file=False):
+	'''takes as input a "state" file (generated from Tensorflow Projector) in
+	JSON format as well as the accompanying metadata file for the projected data
+	and returns a list of gene names associated with the selected points
+
+	NOTE: input a species name for the filter_species parameter to filter out
+	the genes in the selected list of genes that belong to the specified species'''
+
+	import json
+
+	# get list of selected point indices
+	f = open(state_file,'r')
+	data = json.load(f)
+	f.close()
+	dataIdx_list = data[0]['selectedPoints']
+
+	# get list of gene names
+	f = open(metadata_file,'r')
+	reader = csv.reader(f,delimiter='\t')
+	reader.next() # skip header
+	species_gene_list = [(line[1],line[2]) for line in reader]
+	f.close()
+
+	print(species_gene_list)
+
+	if not filter_species:
+		gene_list = [species_gene_list[i][1] for i in dataIdx_list]
+	else:
+		gene_list = [species_gene_list[i][1] for i in dataIdx_list \
+			if species_gene_list[i][0] == filter_species]
+
+	if write2file:
+		f = open('selectedGenes.txt','w')
+		[f.write(gene + '\n') for gene in gene_list]
+		f.close()
+
+	return gene_list
+
 ### GO TERM DATA ##############################################################
 
 def getGOcounts(infile,species):
@@ -115,7 +153,7 @@ def getGOcounts(infile,species):
 
 	return sorted(counts.items(), key=operator.itemgetter(1))
 
-### CNN LAYER OUTPUTS #########################################################
+### NN LAYER OUTPUTS #########################################################
 
 def get_representations(model_name,model_dir,testdata_file,write2file=False):
 	'''restores a pre-trained model stored in the inputted directory and tests
@@ -139,7 +177,7 @@ def get_representations(model_name,model_dir,testdata_file,write2file=False):
 	# load test data
 	f = h5py.File(testdata_file,'r')
 	test_dat = f['dnaseq'][:]
-	test_labels = f['labels'][:]
+	test_labels = f['species_labels'][:]
 	f.close()
 
 	# internal accuracy
@@ -148,6 +186,7 @@ def get_representations(model_name,model_dir,testdata_file,write2file=False):
 
 	if write2file:
 		for i in range(0,test_dat.shape[0],50):
+			print(i)
 			# run session and get output of representational layer
 			feed_dict = {dna: test_dat[i:i+50], labels: test_labels[i:i+50], dropout1: 0}
 			rep_output = sess.run(rep,feed_dict)
@@ -159,9 +198,11 @@ def get_representations(model_name,model_dir,testdata_file,write2file=False):
 			f.close()
 
 	else:
+		feed_dict = {dna: test_dat, labels: test_labels, dropout1: 0}
+		rep_output = sess.run(rep,feed_dict)
 		return rep_output
 
-def getPredictions(model_name,model_dir,testdata_file,label_names,write2file=False):
+def getPredictions(model_name,model_dir,testdata_file,label_names,limit=10000,write2file=False):
 	'''restores a pre-trained model stored in the inputted directory and tests
 	it on a set of test data given by an inputted H5 file name, returning the
 	raw predictions, labeled raw predictions, and confusion matrix'''
@@ -185,8 +226,12 @@ def getPredictions(model_name,model_dir,testdata_file,label_names,write2file=Fal
 
 	# load test data
 	f = h5py.File(testdata_file,'r')
-	test_dat = f['dnaseq'][:]
-	test_labels = f['species_labels'][:]
+	if limit:
+		test_dat = f['dnaseq'][0:limit]
+		test_labels = f['species_labels'][0:limit]
+	else:
+		test_dat = f['dnaseq'][:]
+		test_labels = f['species_labels'][:]
 	f.close()
 
 	prediction_names = []
@@ -204,14 +249,166 @@ def getPredictions(model_name,model_dir,testdata_file,label_names,write2file=Fal
 
 			prediction_names.extend([label_names[np.argmax(pred_probs[i])] \
 				for i in range(pred_probs.shape[0])])
+	else:
+		feed_dict = {dna: test_dat, labels: test_labels, dropout1: 0}
+		pred_probs = sess.run(preds,feed_dict)
 
 	# truelabel_names = f['species'][0:10000]
 	# truelabel_names = [str(i) for i in truelabel_names]
 	truelabel_names = [label_names[np.argmax(label)] for label in test_labels]
-	# prediction_names = [label_names[np.argmax(pred)] for pred in predictions]
+	prediction_names = [label_names[np.argmax(pred)] for pred in pred_probs]
 
-	return predictions,confusion_matrix(truelabel_names,prediction_names,\
+	return pred_probs,confusion_matrix(truelabel_names,prediction_names,\
 		labels=label_names)
+
+def get_representationsBinary(model_name,model_dir,testdata_file,write2file=False):
+	'''restores a pre-trained model stored in the inputted directory and tests
+	it on a set of test data given by an inputted H5 file name, returning a 
+	numpy array of the representational layer outputs (for multi-label binary 
+	classification problems'''
+
+	# load test data
+	f = h5py.File(testdata_file,'r')
+	test_dat = f['dnaseq'][:]
+	test_labels = f['species_labels'][:]
+	f.close()
+
+
+	# restore graph
+	sess = tf.Session()
+	saver = tf.train.import_meta_graph(model_dir + model_name + '.meta')
+	saver.restore(sess,'./' + model_dir + model_name)
+
+	graph = tf.get_default_graph()
+
+	# identify relevant placeholders and operations
+	dna = graph.get_tensor_by_name("dna:0")
+	dropout1 = graph.get_tensor_by_name("dropout_1/keras_learning_phase:0")
+	rep = graph.get_tensor_by_name('representationAll/Relu:0')
+	preds_list = [graph.get_tensor_by_name('dense_'+str(i+1)+'/Softmax:0') for \
+		i in range(test_labels.shape[1])]
+	train_step = graph.get_operation_by_name('Adam')
+	# labels_list = [graph.get_tensor_by_name("label" + str(i) + ":0") for i \
+	# 	in range(test_labels.shape[1])]
+
+	labels_list = [graph.get_tensor_by_name("Placeholder:0")]
+	labels_list.extend([graph.get_tensor_by_name("Placeholder_"+str(i)+":0") for \
+		i in range(1,test_labels.shape[1])])
+
+	if write2file:
+		for i in range(0,test_dat.shape[0],50):
+			print(i)
+			# run session and get output of representational layer
+			feed_dict = {labels_list[j]: test_labels[i:i+50,j] for j in range(test_labels.shape[1])}
+			feed_dict.update({dna: test_dat[i:i+50], dropout1: 0})
+			rep_output = sess.run(rep,feed_dict)
+
+			f = open(model_name + '_rep.txt','a')
+			writer = csv.writer(f,delimiter='\t')
+			for j in range(rep_output.shape[0]):
+				writer.writerow(rep_output[j])
+			f.close()
+	else:
+		feed_dict = {labels_list[j]: test_labels[:,j] for j in range(test_labels.shape[1])}
+		feed_dict.update({dna: test_dat, dropout1: 0})
+		rep_output = sess.run(rep,feed_dict)
+		return rep_output
+
+def getPredictionsBinary(model_name,model_dir,testdata_file,limit=10000,write2file=False):
+	'''restores a pre-trained model stored in the inputted directory and tests
+	it on a set of test data given by an inputted H5 file name, returning the
+	raw predictions'''
+
+	# load test data
+	f = h5py.File(testdata_file,'r')
+	if limit:
+		test_dat = f['dnaseq'][0:limit]
+		test_labels = f['species_labels'][0:limit]
+	else:
+		test_dat = f['dnaseq'][:]
+		test_labels = f['species_labels'][:]
+	f.close()
+
+	# restore graph
+	sess = tf.Session()
+	saver = tf.train.import_meta_graph(model_dir + model_name + '.meta')
+	saver.restore(sess,'./' + model_dir + model_name)
+
+	graph = tf.get_default_graph()
+
+	dna = graph.get_tensor_by_name("dna:0")
+	dropout1 = graph.get_tensor_by_name("dropout_1/keras_learning_phase:0")
+	rep = graph.get_tensor_by_name('representationAll/Relu:0')
+	preds_list = [graph.get_tensor_by_name('dense_'+str(i+1)+'/Softmax:0') for i in range(test_labels.shape[1])]
+	train_step = graph.get_operation_by_name('Adam')
+
+	# define placeholders for binary species labels
+	# labels_list = [graph.get_tensor_by_name("label" + str(i) + ":0") for i in range(test_labels.shape[1])]
+
+	labels_list = [graph.get_tensor_by_name("Placeholder:0")]
+	labels_list.extend([graph.get_tensor_by_name("Placeholder_"+str(i)+":0") for \
+		i in range(1,test_labels.shape[1])])
+
+	prediction_names = []
+	if write2file:
+		for i in range(0,test_dat.shape[0],50):
+			# run session and get output of representational layer
+			feed_dict = {labels_list[j]: test_labels[i:i+50,j] for j in range(test_labels.shape[1])}
+			feed_dict.update({dna: test_dat[i:i+50], dropout1: 0})
+			pred_probs_list = sess.run(preds_list,feed_dict)
+
+			# f = open(model_name + '_predProbs.txt','a')
+			# writer = csv.writer(f,delimiter='\t')
+			# for j in range(pred_probs.shape[0]):
+			# 	writer.writerow(pred_probs[j])
+			# f.close()
+
+			# prediction_names.extend([label_names[np.argmax(pred_probs[i])] \
+			# 	for i in range(pred_probs.shape[0])])
+	else:
+		feed_dict = {labels_list[j]: test_labels[:,j] for j in range(test_labels.shape[1])}
+       	feed_dict.update({dna: test_dat, dropout1: 0})
+       	pred_probs_list = sess.run(preds_list,feed_dict)
+
+	# truelabel_names = f['species'][0:10000]
+	# truelabel_names = [str(i) for i in truelabel_names]
+	# truelabel_names = [label_names[np.argmax(label)] for label in test_labels]
+	# prediction_names = [label_names[np.argmax(pred)] for pred in pred_probs]
+
+	return pred_probs_list
+
+def convertBinPreds2Flat(pred_probs_list):
+
+	preds = np.array([1*(pred_arr[:,0] > 0.5) for pred_arr in pred_probs_list])
+	
+	return preds.T
+
+def convertBinLabel2Flat(binlabel_arr):
+
+	return np.array([binlabel_arr[i][:,0] for i in range(binlabel_arr.shape[0])])
+
+def predPrecisionRecall(pred_probs_list,binlabel_arr):
+
+	preds = [1*(pred_arr[:,0] > 0.5) for pred_arr in pred_probs_list]
+	truePos = [preds[i]*binlabel_arr[:,i,0] for i in range(len(preds))]
+	recall = [sum(truePos[i])/sum(binlabel_arr[:,i,0]) for i in range(len(preds))]
+	precision = [sum(truePos[i])/sum(preds[i]) for i in range(len(preds))]
+
+	return np.nanmean(precision), np.nanmean(recall)
+
+def predPrecisionRecall2(pred_probs_list,binlabel_arr):
+
+	from sklearn.metrics import precision_score, recall_score
+	preds = [1*(pred_arr[:,0] > 0.5) for pred_arr in pred_probs_list]
+	posPreds = [sum(preds[i]) for i in range(len(preds))]
+	print(posPreds)
+	precision = [precision_score(binlabel_arr[:,i,0],preds[i]) for i in range(len(preds))]
+	recall = [recall_score(binlabel_arr[:,i,0],preds[i]) for i in range(len(preds))]
+
+	print(precision)
+	print(recall)
+
+	return np.nanmean(precision), np.nanmean(recall)
 
 def calcPrecisionRecall(cm):
 	'''calculates precision and recall from an inputted confusion matrix'''
@@ -396,7 +593,7 @@ def write_projection(representation_file,output_file,method='PCA'):
 
 	elif method == 'tSNE':
 		from sklearn.manifold import TSNE
-		model = TSNE(n_components=2)
+		model = TSNE(n_components=3)
 		transformed_X = model.fit_transform(X) 
 
 	np.savetxt(output_file,transformed_X,delimiter='\t')
@@ -537,22 +734,29 @@ def getCertainSeq(certainGenes_file,uncertainGenes_file,promoterSeq_file,promote
 	f.create_dataset('genes',data=gene_list,dtype=dt,compression='gzip')
 	f.close()
 
+# model_name = 'all10binBinary_model'
+# model_dir = ''
+# testdata_file = 'data/h5datasets/all10bin/all.h5'
+# get_representationsBinary(model_name,model_dir,testdata_file,True)
 
-certainGenes_file = 'results/clustering/gene_sets/Mouse_Human_certainHuman95.txt'
-uncertainGenes_file = 'results/clustering/gene_sets/Mouse_Human_uncertainHuman45.txt'
-promoterSeq_file = 'data/my_promoters/Human1000.fa.txt'
-promoter_length = 500
-outfile = 'Human_certain.h5'
-getCertainSeq(certainGenes_file,uncertainGenes_file,promoterSeq_file,promoter_length,outfile)
+# model_dir = ''
+# model_name = 'all10_dense_model'
+# testdata_file = 'data/h5datasets/all10/all.h5'
+# get_representations(model_name,model_dir,testdata_file,write2file=True)
 
-certainGenes_file = 'results/clustering/gene_sets/Mouse_Human_certainMouse95.txt'
-uncertainGenes_file = 'results/clustering/gene_sets/Mouse_Human_uncertainMouse45.txt'
-promoterSeq_file = 'data/my_promoters/Mouse1000.fa.txt'
-promoter_length = 500
-outfile = 'Mouse_certain.h5'
-getCertainSeq(certainGenes_file,uncertainGenes_file,promoterSeq_file,promoter_length,outfile)
+# model_name = 'all10binBinary_model'
+# model_dir = ''
+# testdata_file = 'data/h5datasets/all10bin/validation_even.h5'
+# a = getPredictionsBinary(model_name,model_dir,testdata_file,limit=1000)
 
 # clusterAccuracy('results/Mouse_Human/Mouse_Human_dense_allgenes_repPCA.txt','data/h5datasets/Mouse_Human/all.h5',2)
+
+# species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','Chicken','aThal','Lizard']
+# write_metadata(species_list,'all10','all.h5')
+
+representation_file = 'results/all10/all10_dense_model_repAllGenes.txt'
+output_file = 'all10_dense_model_repAllGenes_tSNE.txt'
+write_projection(representation_file,output_file,method='tSNE')
 
 # model_name = 'Mouse_Human_dense_model' # model is densely connected network
 # model_dir = 'results/Mouse_Human/'
@@ -566,14 +770,14 @@ getCertainSeq(certainGenes_file,uncertainGenes_file,promoterSeq_file,promoter_le
 # h5_file = testdata_file
 # blah = getUncertainPredictions(predProb_file,h5_file,species_list,prob_threshold=0.4)
 # # get representations for all genes and write to file
-# get_representations(model_name,model_dir,testdata_file,write2file=True)
+
 
 # write_metadata(['Mouse','Human'],'Mouse_Human','all.h5')
 
-# representation_file = 'all8_filter2rep.txt'
-# metadata_file = 'all8_metadata.tsv'
+# representation_file = 'results/all10/all10_dense_model_repAllGenes.txt'
+# metadata_file = 'results/all10/all10_metadataAllGenes.tsv'
 # index_set = [2,3]
-# output_file = 'all8_MouseHuman'
+# output_file = 'all10_MouseHumanAllGenes'
 # filterLabels(representation_file,metadata_file,index_set,output_file)
 
 # sess = tf.Session()

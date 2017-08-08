@@ -27,8 +27,8 @@ from sklearn.metrics import hamming_loss
 promoter_length = 500
 
 # training parameters
-epochs = 20
-batch_size = 50
+epochs = 30
+batch_size = 200
 
 # CNN hyperparameters
 num_filters = 50
@@ -40,11 +40,11 @@ filter_width = 5
 learning_rate = 0.0001
 
 # LSTM hyperparameters
-n_steps = 20 # timesteps 
+n_steps = 50 # timesteps 
 n_hidden = 128 # hidden layer num of features
 
 species_dir = str(sys.argv[1])
-outfile_name = species_dir + 'LSTMConvPar'
+outfile_name = species_dir + 'LSTMsmall'
 print(species_dir)
 
 train_h5file = 'data/h5datasets/' + str(species_dir) + '/train.h5'
@@ -86,7 +86,7 @@ def conv_pool_drop(input_tensor,layer_num,filter_height,filter_width,num_filters
 
     return drop
 
-def RNN(x,n_steps,n_hidden,n_classes,return_seq=False):
+def RNN(x,n_steps,n_hidden,n_classes,celltype='LSTM',return_seq=False):
     # input shape: (batch_size, n_steps, n_input)
     # converted shape:'n_steps' tensors list of shape (batch_size, n_input)
 
@@ -96,8 +96,12 @@ def RNN(x,n_steps,n_hidden,n_classes,return_seq=False):
 
     # Unstack to get a list of 'n_steps' tensors of shape (batch_size, n_input)
     x = tf.unstack(x, n_steps, 1)
-    lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
-    outputs, states = tf.contrib.rnn.static_rnn(lstm_cell, x, dtype=tf.float32)
+
+    if celltype == 'LSTM':
+        cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
+    elif celltype == 'GRU':
+        cell = tf.contrib.rnn.GRUCell(n_hidden)
+    outputs, states = tf.contrib.rnn.static_rnn(cell, x, dtype=tf.float32)
 
     if return_seq:
         return [tf.matmul(outp, weights['out']) + biases['out'] for outp in outputs]
@@ -114,11 +118,10 @@ def multiRNN(x,n_steps,n_hidden,n_classes,numLayers,return_seq=False):
 
     # Unstack to get a list of 'n_steps' tensors of shape (batch_size, n_input)
     x = tf.unstack(x, n_steps, 1)
-    lstm_cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
-    outputs, states = tf.contrib.rnn.static_rnn(lstm_cell, x, dtype=tf.float32)
 
     rnn_cell = tf.contrib.rnn.MultiRNNCell([tf.contrib.rnn.BasicLSTMCell(n_hidden,forget_bias=1.0) \
         for i in range(numLayers)])
+    outputs, states = tf.contrib.rnn.static_rnn(rnn_cell, x, dtype=tf.float32)
 
     if return_seq:
         return [tf.matmul(outp, weights['out']) + biases['out'] for outp in outputs]
@@ -181,16 +184,31 @@ labels = tf.placeholder(tf.float32,shape=(None,num_species),name='label')
 ### MODEL #####################################################################
 ###############################################################################
 
-# LSTM
-reshapedDNA = tf.concat(tf.split(tf.squeeze(dna,[3]),int(promoter_length/n_steps),2),0)
-reshapedDNA = tf.reshape(reshapedDNA,[tf.shape(reshapedDNA)[0],tf.shape(reshapedDNA)[2],4])
-with tf.variable_scope('LSTM1'):
-    lstm1 = RNN(reshapedDNA,n_steps,n_hidden,32)
+# # LSTM
+# reshapedDNA = tf.concat(tf.split(tf.squeeze(dna,[3]),int(promoter_length/n_steps),2),0)
+# reshapedDNA = tf.reshape(reshapedDNA,[tf.shape(reshapedDNA)[0],tf.shape(reshapedDNA)[2],4])
+# with tf.variable_scope('LSTM1'):
+#     lstm1 = RNN(reshapedDNA,n_steps,n_hidden,100)
 
-n_steps2 = int(promoter_length/n_steps)
-reshapedLSTM1 = tf.reshape(lstm1,[tf.shape(dna)[0],n_steps2,32])
-with tf.variable_scope('LSTM2'):
-    lstm2 = RNN(reshapedLSTM1,n_steps2,n_hidden,64)
+# n_steps2 = int(promoter_length/n_steps)
+# reshapedLSTM1 = tf.reshape(lstm1,[tf.shape(dna)[0],n_steps2,100])
+# with tf.variable_scope('LSTM2'):
+#     lstm2 = RNN(reshapedLSTM1,n_steps2,n_hidden,100)
+
+reshapedDNA = tf.reshape(tf.squeeze(dna,[3]),[tf.shape(dna)[0],n_steps,int(promoter_length/n_steps)*4])
+print(reshapedDNA)
+with tf.variable_scope('RNN1'):
+    rnn1 = RNN(reshapedDNA,n_steps,n_hidden,32,celltype='GRU')
+    print(rnn1)
+
+# lstm1 = multiRNN(reshapedDNA,n_steps,n_hidden,32,3)
+
+# n_steps2 = int(promoter_length/n_steps)
+# reshapedLSTM1 = tf.reshape(lstm1,[tf.shape(dna)[0],n_steps2,32])
+
+# reshapedLSTM1 = tf.reshape(reshapedLSTM1,[tf.shape(reshapedLSTM1)[0],32,n_steps2])
+# drop1 = conv_pool_drop(tf.expand_dims(reshapedLSTM1,3),2,4,filter_width,num_filters)
+# drop2 = conv_pool_drop(drop1,2,4,filter_width,num_filters)
 
 # LSTMFlat = Flatten()(lstm2)
 # LSTMRep = Dense(100,activation='relu',name='LSTMRep')(lstm2)
@@ -199,7 +217,7 @@ with tf.variable_scope('LSTM2'):
 #     weights,biases)
 # lstm_drop1 = Dropout(0.5)(lstm1)
 
-# # LSTM branch
+# LSTM branch
 # conv1 = Conv2D(64,[4,5],activation='linear',
 #                 name='convTrans_1',padding='valid')(dna)
 # leak1 = LeakyReLU(alpha=.001)(conv1)
@@ -222,9 +240,8 @@ with tf.variable_scope('LSTM2'):
 # stacked_layers = tf.stack([LSTMRep,ConvRep],1)
 # stacked_layers = tf.stack([lstm1,ConvRep],1)
 
-
-# flat = Flatten()(reshapedLSTM)
-FC = Dense(50,activation='relu',name='representation')(lstm2)
+# flat = Flatten()(drop2)
+FC = Dense(50,activation='relu',name='representation')(rnn1)
 preds = Dense(num_species,activation='softmax')(FC)
 
 ###############################################################################

@@ -106,7 +106,7 @@ trans1_conv = Conv2D(num_filters,[filter_height1,filter_width],activation='linea
 trans1_leak = LeakyReLU(alpha=.001)(trans1_conv)
 trans1_pool = AveragePooling2D((1,pool_size),strides=(1,pool_stride),\
                 name='AvgPool_trans1')(trans1_leak)
-trans1_drop = Dropout(0.5)(trans1_conv)
+trans1_drop = Dropout(0.5)(trans1_pool)
 
 # dense block
 denseblock1 = dense_block(trans1_drop,1,num_filters=50,filter_width=filter_width)

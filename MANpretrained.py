@@ -12,7 +12,7 @@ from matplotlib import pylab as pl
 from MANfunc import *
 from model import *
 
-species_dir = 'Human_background' #'TAL1_background'
+species_dir = 'TAL1degen_background' #'Human_background' #'TAL1_background'
 train_h5file = 'data/simulated_dna/' + str(species_dir) + '/train.h5'
 validation_h5file = 'data/simulated_dna/' + str(species_dir) + '/validation.h5'
 background_h5file = 'data/simulated_dna/background.h5'
@@ -22,11 +22,14 @@ Disc_epochs = 2
 Disc_batch_size = 50
 
 # Mutator training parameters
-Mut_epochs = 20
+Mut_epochs = 10
 Mut_batch_size = 50
 
 # Mutator-Discriminator training frequency ratio
-MutDiscRatio = 2
+MutDiscRatio = 10
+
+# noise labels
+noisyLabels = False #True
 
 # read in HDF5 file & create batch iterator for Discriminator training data
 train_file = h5py.File(train_h5file,'r')
@@ -101,11 +104,13 @@ with tf.variable_scope('shared'):
 
 with tf.variable_scope('mutator'):    
 
-    conv1 = ConvShared(inp)
-    drop1 = conv_drop(conv1,2,filter_height2,filter_width)
-    drop2 = conv_pool_drop(drop1,3,filter_height2,filter_width)
+    #conv1 = ConvShared(inp)
+    drop1 = conv_drop(inp,1,filter_height1,filter_width)
+    drop2 = conv_drop(drop1,2,filter_height2,filter_width)
+    drop3 = conv_pool_drop(drop1,3,filter_height2,filter_width)
 
-    fl1 = Flatten()(drop2)
+
+    fl1 = Flatten()(drop3)
     mutant_repr = Dense(50, name='mutant_representation', activation='tanh')(fl1)
 
     logits = Dense(train_file['dnaseq'].shape[2], name='prediction', \
@@ -115,7 +120,7 @@ with tf.variable_scope('mutator'):
 
     # sample and reshape back (shape=(batch_size,N,K))
     # set hard=True for ST Gumbel-Softmax   
-    mutant = gumbel_softmax(inp, logits_dna, tau, hard=False)
+    mutant = gumbel_softmax(inp, logits_dna, tau, hard=True, lam=0.8)
 
     # create copy of mutant (for accessing later)
     mutant_copy = tf.identity(mutant,name='mutant')
@@ -145,11 +150,11 @@ with tf.variable_scope('discriminator'):
     dn2d = Dense(2, name='prediction', activation='softmax')
 
     # mutant probability (of being real)
-    p_mutant = dn2d(dn1(fl1(mp1(cn2(ConvShared(mutant))))))
+    p_mutant = dn2d(dn1(fl1(mp1(cn2(cn1(mutant))))))
     # p_mutant = dn2d(dn1(fl1(mp2(cn3(mp1(cn2(cn1(mutant))))))))
 
     # non-mutant/real probability (of being real)
-    p_nonmutant = dn2d(dn1(fl1(mp1(cn2(ConvShared(inp))))))
+    p_nonmutant = dn2d(dn1(fl1(mp1(cn2(cn1(inp))))))
     # p_nonmutant = dn2d(dn1(fl1(mp2(cn3(mp1(cn2(cn1(inp))))))))
 
     # create copies of mutant and non-mutant predictions (for accessing later)
@@ -230,14 +235,20 @@ with sess.as_default():
     lowest_Mut_loss = 1000
     for i in range(MutTotalIterations):
         Mut_batch = Mut_batcher.next()
+
         M_acc_val,_ = sess.run([mutant_accuracy,M_solver],feed_dict={inp: Mut_batch['dnaseq'],labels: np.array([[1.,0.]]), \
             tau: temperature, K.learning_phase(): 1})
 
         # train Discriminator
         if i%MutDiscRatio == 0:
             Disc_batch = Disc_batcher.next()
+            if noisyLabels and i%(MutDiscRatio*5):
+                Disc_labels = Disc_batch['labels']
+                np.random.shuffle(Disc_labels) #[0:int(0.2*len(Disc_labels))])
+            else:
+                Disc_labels = Disc_batch['labels']
             sess.run([D_solver],feed_dict={inp: Disc_batch['dnaseq'], \
-                labels: Disc_batch['labels'], K.learning_phase(): 1})
+                labels: Disc_labels, K.learning_phase(): 1})
 
         # Disc_batch = Disc_batcher.next()
         # sess.run([D_solver],feed_dict={inp: Disc_batch['dnaseq'], \

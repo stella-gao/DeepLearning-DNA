@@ -105,11 +105,11 @@ def writeSequence(seq_dict,outfile_name):
 
     f.close()
 
-species_list = ['Human'] #,'Zebrafish'] #,'dMelan']
+species_list = ['Lizard'] #,'Zebrafish'] #,'dMelan']
 for species in species_list:
     ann_file = 'data/annotation_files/' + species + '.gtf.gz'
     genomedat_dir = 'data/genome_files/' + species
-    promoter_length = 200
+    promoter_length = 1000
 
     annot_dict = read_gtf(ann_file)
     seq_dict = readSequences(annot_dict,genomedat_dir,promoter_length)

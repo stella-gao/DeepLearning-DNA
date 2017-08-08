@@ -109,20 +109,12 @@ def one_hot_encode_sequence(seq):
     representation'''
 
     seq = seq.lower()
+    letterdict = {'a': [1, 0, 0, 0], 't': [0, 1, 0, 0], 'c': [0, 0, 1, 0],
+                  'g': [0, 0, 0, 1], 'n': [0.25, 0.25, 0.25, 0.25]}
+                  
+    result = np.array([letterdict[x] for x in seq])
 
-    result = [[np.array([0.]) for i in range(len(seq))] for i in range(4)]
-
-    bps = ['a','t','c','g']
-    for i in range(len(seq)):
-        if seq[i] == 'n':
-            for j in range(4):
-                result[j][i] = np.array([0.25])
-        else:
-            result[bps.index(seq[i])][i] = np.array([1.])
-
-    result = [np.array(x) for x in result]
-
-    return np.array(result)
+    return np.expand_dims(result.T,3)
 
 def convertWriteSeq(seq_dict,outfile):
     '''converts the sequences represented in the inputted annotation dictionary
