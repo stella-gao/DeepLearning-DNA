@@ -27,8 +27,12 @@ from sklearn.metrics import hamming_loss
 promoter_length = 500
 
 # training parameters
-epochs = 20
+epochs = 80
 batch_size = 200
+
+# LSTM hyperparameters
+n_steps = 50 # timesteps 
+n_hidden = 128 # hidden layer num of features
 
 # CNN hyperparameters
 num_filters = 50
@@ -39,12 +43,13 @@ filter_height2 = 1
 filter_width = 5
 learning_rate = 0.0001
 
-species_dir = 'all10bin' #str(sys.argv[1])
-outfile_name = species_dir + 'Binary'
+species_dir = str(sys.argv[1])
+outfile_name = species_dir + 'Binary3Branches'
 print(species_dir)
 
 train_h5file = 'data/h5datasets/' + str(species_dir) + '/train.h5'
 validation_h5file = 'data/h5datasets/' + str(species_dir) + '/validation.h5'
+# allgenes_h5file = 'data/h5datasets/' + str(species_dir) + '/all.h5'
 
 # print hyperparameters
 print('Batch Size: ' + str(batch_size))
@@ -82,6 +87,30 @@ def conv_pool_drop(input_tensor,layer_num,filter_height,filter_width,num_filters
 
     return drop
 
+def RNN(x,n_steps,n_hidden,n_classes,celltype='LSTM',return_seq=False):
+    # input shape: (batch_size, n_steps, n_input)
+    # converted shape:'n_steps' tensors list of shape (batch_size, n_input)
+
+    # define weights, biases for LSTM component
+    weights = {'out': tf.Variable(tf.random_normal([n_hidden, n_classes]))}
+    biases = {'out': tf.Variable(tf.random_normal([n_classes]))}
+
+    # Unstack to get a list of 'n_steps' tensors of shape (batch_size, n_input)
+    x = tf.unstack(x, n_steps, 1)
+
+    if celltype == 'LSTM':
+        cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
+    elif celltype == 'GRU':
+        cell = tf.contrib.rnn.GRUCell(n_hidden)
+    outputs, states = tf.contrib.rnn.static_rnn(cell, x, dtype=tf.float32)
+
+    if return_seq:
+        class_output = [tf.matmul(outp, weights['out']) + biases['out'] for outp in outputs]
+    else:
+        class_output = tf.matmul(outputs[-1], weights['out']) + biases['out']
+
+    return class_output
+
 def predPrecisionRecall(pred_probs_list,binlabel_arr):
 
     preds = [1*(pred_arr[:,0] > 0.5) for pred_arr in pred_probs_list]
@@ -102,6 +131,11 @@ val_datsize = min(1000,validation_file.values()[0].shape[0])
 validation_dat = validation_file['dnaseq'][0:val_datsize]
 validation_labels = validation_file['species_labels'][0:val_datsize]
 
+# # read in HDF5 file for all genes data
+# allgenes_file = h5py.File(allgenes_h5file,'r')
+# allgenes_dat = allgenes_file['dnaseq'][:]
+# allgenes_labels = allgenes_file['species_labels'][:]
+
 # create CallBack Tensorboard object
 tbCallBack = callbacks.TensorBoard(log_dir='./blah', histogram_freq=0, \
         write_graph=True, write_images=True)
@@ -117,13 +151,49 @@ dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='dna')
 ### MODEL #####################################################################
 ###############################################################################
 
-# build layers of network
-drop1 = conv_pool_drop(dna,1,filter_height1,filter_width,num_filters)
-drop2 = conv_pool_drop(drop1,2,filter_height2,filter_width,num_filters)
-drop3 = conv_pool_drop(drop2,3,filter_height2,filter_width,num_filters)
-drop4 = conv_pool_drop(drop2,4,filter_height2,filter_width,num_filters)
+# Raw Branch
+with tf.variable_scope('RNN1'):
+    reshapedDNA = tf.reshape(tf.squeeze(dna,[3]),[tf.shape(dna)[0],n_steps,int(promoter_length/n_steps)*4])
+    rnn1 = RNN(reshapedDNA,n_steps,n_hidden,50,celltype='GRU',return_seq=True)
 
-flat = Flatten()(drop4)
+# Regular Convolution Branch
+with tf.variable_scope('RNN2'):
+    conv1 = Conv2D(32,[4,5],activation='linear',
+                    name='convTrans_1',padding='valid')(dna)
+    leak1 = LeakyReLU(alpha=.001)(conv1)
+    pool1 = AveragePooling2D((1,2),strides=(1,2),name='AvgPoolTrans_1',padding='same')(leak1) 
+    conv2 = Conv2D(8,[1,5],activation='linear',
+                    name='convTrans_2',padding='valid')(pool1)
+    leak2 = LeakyReLU(alpha=.001)(conv2)
+    pool2 = AveragePooling2D((1,2),strides=(1,2),name='AvgPoolTrans_2',padding='same')(leak2) 
+    reshapedConv = tf.reshape(tf.squeeze(pool2,[1]),[tf.shape(dna)[0],61,16])
+    rnn2 = RNN(reshapedConv,61,n_hidden,50,celltype='GRU')
+
+# Dilated Convolution Branch
+with tf.variable_scope('RNN3'):
+    convDil1 = Conv2D(32,[4,5],activation='linear',
+                    name='convTrans_1',padding='valid',dilation_rate=(1,5))(dna)
+    leakDil1 = LeakyReLU(alpha=.001)(convDil1)
+    print(leakDil1)
+    poolDil1 = AveragePooling2D((1,2),strides=(1,2),name='AvgPoolTrans_1',padding='same')(leakDil1) 
+    convDil2 = Conv2D(8,[1,5],activation='linear',
+                    name='convTrans_2',padding='valid',dilation_rate=(1,5))(poolDil1)
+    leakDil2 = LeakyReLU(alpha=.001)(convDil2)
+    poolDil2 = AveragePooling2D((1,2),strides=(1,2),name='AvgPoolTrans_2',padding='same')(leakDil2) 
+    print(poolDil2)
+    reshapedDilConv = tf.reshape(tf.squeeze(poolDil2,[1]),[tf.shape(dna)[0],55,16])
+    rnn3 = RNN(reshapedDilConv,55,n_hidden,50,celltype='GRU')    
+
+# stack branch outputs
+stacked_layers = tf.reshape(tf.concat([rnn1,rnn2,rnn3],1),shape = [-1,3,50])
+
+# # build layers of network
+# drop1 = conv_pool_drop(dna,1,filter_height1,filter_width,num_filters)
+# drop2 = conv_pool_drop(drop1,2,filter_height2,filter_width,num_filters)
+# drop3 = conv_pool_drop(drop2,3,filter_height2,filter_width,num_filters)
+# drop4 = conv_pool_drop(drop2,4,filter_height2,filter_width,num_filters)
+
+flat = Flatten()(stacked_layers)
 allFC = Dense(100,activation='relu',name='representationAll')(flat)
 FC_list = [Dense(50,activation='relu',name='representation_'+str(i))(allFC) \
     for i in range(num_species)]
@@ -184,12 +254,12 @@ with sess.as_default():
 
     lowest_val_loss = 1000
 
-    # # initialize writer to write output to file
-    # f = open(outfile_name + '.output','w')
-    # writer = csv.writer(f,delimiter='\t')
+    # initialize writer to write output to file
+    f = open(outfile_name + '.output','w')
+    writer = csv.writer(f,delimiter='\t')
 
     print('epochs\ttrain_exactmatch\ttrain_prec\ttrain_recall\ttrain_loss\tval_exactmatch\tval_prec\tval_recall\tval_loss')
-    # writer.writerow(['epochs','train_exactmatch','train_prec','train_recall','train_loss','val_exactmatch','val_prec','val_recall','val_loss'])
+    writer.writerow(['epochs','train_exactmatch','train_prec','train_recall','train_loss','val_exactmatch','val_prec','val_recall','val_loss'])
 
     # f.close()
 
@@ -233,22 +303,32 @@ with sess.as_default():
                 str(train_recall),str(train_loss),str(val_exactmatchacc),str(val_prec), \
                 str(val_recall),str(val_loss)]))
 
-            # f = open(outfile_name + '.output','a')
-            # writer = csv.writer(f,delimiter='\t')
-            # writer.writerow([epoch_num,train_exactmatchacc,train_prec,train_recall,train_loss,\
-            #     val_exactmatchacc,val_prec,val_recall,val_loss])
-            # f.close()
+            f = open(outfile_name + '.output','a')
+            writer = csv.writer(f,delimiter='\t')
+            writer.writerow([epoch_num,train_exactmatchacc,train_prec,train_recall,train_loss,\
+                val_exactmatchacc,val_prec,val_recall,val_loss])
+            f.close()
 
-            # # save model if current validation loss is lower than the previous lowest
-            # if val_loss < lowest_val_loss:
-            #     saver.save(sess,outfile_name + '_model')
-            #     lowest_val_loss = val_loss
-
-    # get representational output 
-    rep_layer = sess.run(allFC,feed_dict={dna: validation_dat, \
-        labels: validation_labels,K.learning_phase(): 0})
+            # save model if current validation loss is lower than the previous lowest
+            if val_loss < lowest_val_loss:
+                saver.save(sess,outfile_name + '_model')
+                lowest_val_loss = val_loss
 
     # write representational output to file
-    np.savetxt(outfile_name + '_rep.txt',rep_layer,delimiter='\t')
+
+    for i in range(0,allgenes_dat.shape[0],50):
+        # run session and get output of representational layer
+        allgenes_feed_dict = {labels_list[j]: allgenes_labels[i:i+50,j] for j in range(num_species)}
+        allgenes_feed_dict.update({dna: allgenes_dat[i:i+50], K.learning_phase(): 0})
+
+        rep_output = sess.run(allFC,feed_dict=allgenes_feed_dict)
+        f = open(outfile_name + '_rep.txt','a')
+        writer = csv.writer(f,delimiter='\t')
+        for j in range(rep_output.shape[0]):
+            writer.writerow(rep_output[j])
+        f.close()
+
+    # # write representational output to file
+    # np.savetxt(outfile_name + '_rep.txt',rep_layer,delimiter='\t')
 
 f.close()

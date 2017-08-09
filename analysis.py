@@ -108,7 +108,7 @@ def getSelectedPoints(state_file,metadata_file,filter_species=False,write2file=F
 	f = open(state_file,'r')
 	data = json.load(f)
 	f.close()
-	dataIdx_list = data[0]['selectedPoints']
+	dataIdx_list = data[0]['filteredPoints']
 
 	# get list of gene names
 	f = open(metadata_file,'r')
@@ -116,8 +116,6 @@ def getSelectedPoints(state_file,metadata_file,filter_species=False,write2file=F
 	reader.next() # skip header
 	species_gene_list = [(line[1],line[2]) for line in reader]
 	f.close()
-
-	print(species_gene_list)
 
 	if not filter_species:
 		gene_list = [species_gene_list[i][1] for i in dataIdx_list]
@@ -272,7 +270,6 @@ def get_representationsBinary(model_name,model_dir,testdata_file,write2file=Fals
 	test_dat = f['dnaseq'][:]
 	test_labels = f['species_labels'][:]
 	f.close()
-
 
 	# restore graph
 	sess = tf.Session()
@@ -506,6 +503,30 @@ def integrated_gradients(sess,graph,dnaseq,labelIdx=False):
 
 	grad = tf.gradients(preds_label[scoreIdx],dna)[0]
 	grad_vals = sess.run(grad,feed_dict2)
+
+	return dnaseq*np.average(grad_vals,axis=0)
+
+def integrated_gradientsBinary(sess,graph,dnaseq,num_species,labelIdx):
+	'''computes the attributions/feature importances for the prediction
+	label based on integrated gradients at the inputted DNA sequence'''
+
+
+	dna = graph.get_tensor_by_name("dna:0")
+	dropout1 = graph.get_tensor_by_name("dropout_1/keras_learning_phase:0")
+	rep = graph.get_tensor_by_name('representationAll/Relu:0')
+	preds_list = [graph.get_tensor_by_name('dense_'+str(i+1)+'/Softmax:0') for \
+		i in range(num_species)]
+	train_step = graph.get_operation_by_name('Adam')
+
+	# tensor representing the softmax output for a given label
+	preds_label = tf.reduce_mean(preds_list[labelIdx],reduction_indices=0)
+
+	# scale one-hot encoded DNA sequences
+	scaled_dna = np.array([scale_dnaseq(dnaseq,i) for i in np.linspace(0,1,50)])
+	feed_dict = {dna: scaled_dna,dropout1: 0}
+
+	grad = tf.gradients(preds_label[0],dna)[0]
+	grad_vals = sess.run(grad,feed_dict)
 
 	return dnaseq*np.average(grad_vals,axis=0)
 
@@ -754,8 +775,8 @@ def getCertainSeq(certainGenes_file,uncertainGenes_file,promoterSeq_file,promote
 # species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','Chicken','aThal','Lizard']
 # write_metadata(species_list,'all10','all.h5')
 
-representation_file = 'results/all10/all10_dense_model_repAllGenes.txt'
-output_file = 'all10_dense_model_repAllGenes_tSNE.txt'
+representation_file = 'results/all10bin/all10bin_MouseHumanAllGenes_filteredrep.txt'
+output_file = 'all10bin_MouseHumanAllGenes_filteredrep_tSNE.txt'
 write_projection(representation_file,output_file,method='tSNE')
 
 # model_name = 'Mouse_Human_dense_model' # model is densely connected network
@@ -774,10 +795,10 @@ write_projection(representation_file,output_file,method='tSNE')
 
 # write_metadata(['Mouse','Human'],'Mouse_Human','all.h5')
 
-# representation_file = 'results/all10/all10_dense_model_repAllGenes.txt'
+# representation_file = 'results/all10bin/all10binBinary_model_repAllGenes.txt'
 # metadata_file = 'results/all10/all10_metadataAllGenes.tsv'
 # index_set = [2,3]
-# output_file = 'all10_MouseHumanAllGenes'
+# output_file = 'all10bin_MouseHumanAllGenes'
 # filterLabels(representation_file,metadata_file,index_set,output_file)
 
 # sess = tf.Session()
