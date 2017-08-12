@@ -94,7 +94,54 @@ def filterLabels(representation_file,metadata_file,index_set,output_file):
 	f.close()
 	g.close()
 
-def getSelectedPoints(state_file,metadata_file,filter_species=False,write2file=False):
+def filterGenes(representation_file,metadata_file,index_set,gene_list,output_file):
+	'''takes in a .txt file of representational layer outputs along with the
+	corresponding raw data file (in H5 format) and filters out the 
+	representational layer outputs that are associated with an inputted label'''	
+
+	rep_dat = np.loadtxt(representation_file,delimiter='\t')
+
+	f = open(metadata_file,'r')
+	reader = csv.reader(f,delimiter='\t')
+
+	g = open(output_file + '_metadata.tsv','w')
+	writer = csv.writer(g,delimiter='\t')
+	
+	i = 0
+	index_list = []
+	writer.writerow(reader.next()) # skip metadata file header
+	for line in reader:
+		if int(line[0]) in index_set and line[2].lower() in gene_list:
+			writer.writerow(line)
+			index_list.append(i)
+		i += 1
+
+	np.savetxt(output_file + '_filteredrep.txt',rep_dat[np.array(index_list)], \
+		delimiter='\t')
+
+	f.close()
+	g.close()
+
+def filterSpeciesMetadataOnly(metadata_file,index_set,output_file):
+	'''takes in a metadata file and returns a filtered version consisting of
+	only species referenced by the index_set list parameter'''
+
+	f = open(metadata_file,'r')
+	reader = csv.reader(f,delimiter='\t')
+	reader.next()
+
+	g = open(output_file,'w')
+
+	for line in reader:
+		if int(line[0]) in index_set:
+			g.write(line[2] + '\n')
+
+	f.close()
+	g.close()
+
+### TENSORFLOW PROJECTOR ######################################################
+
+def getSelectedPointsTFProj(state_file,metadata_file,filter_species=False,write2file=False):
 	'''takes as input a "state" file (generated from Tensorflow Projector) in
 	JSON format as well as the accompanying metadata file for the projected data
 	and returns a list of gene names associated with the selected points
@@ -129,6 +176,31 @@ def getSelectedPoints(state_file,metadata_file,filter_species=False,write2file=F
 		f.close()
 
 	return gene_list
+
+def getAllProjectedPoints(state_file,ndim=3,write2file=False):
+	'''takes as input a "state" file (generated from Tensorflow Projector) in
+	JSON format as well as the accompanying metadata file for the projected data
+	and returns an array of projected points alongside the corresponding gene names
+
+	NOTE: input a species name for the filter_species parameter to filter out
+	the genes in the selected list of genes that belong to the specified species'''	
+
+	import json
+
+	# get list of selected projections
+	f = open(state_file,'r')
+	data = json.load(f)[0]
+	f.close()
+	data_list = data['projections']
+
+	# get n dimensions of projections
+	projectedPoints = np.array([np.array([data_list[i]['pca-'+str(j)] \
+		for j in range(ndim)]) for i in range(len(data_list))])
+
+	if write2file:
+		np.savetxt('projectedPoints.txt',projectedPoints,delimiter='\t')
+
+	return projectedPoints	
 
 ### GO TERM DATA ##############################################################
 
@@ -613,8 +685,9 @@ def write_projection(representation_file,output_file,method='PCA'):
 		transformed_X = model.fit_transform(X)
 
 	elif method == 'tSNE':
-		from sklearn.manifold import TSNE
-		model = TSNE(n_components=3)
+		# from sklearn.manifold import TSNE
+		from bhtsne import tsne
+		model = TSNE(n_components=3,perplexity=50,n_iter=400)
 		transformed_X = model.fit_transform(X) 
 
 	np.savetxt(output_file,transformed_X,delimiter='\t')
@@ -775,9 +848,9 @@ def getCertainSeq(certainGenes_file,uncertainGenes_file,promoterSeq_file,promote
 # species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','Chicken','aThal','Lizard']
 # write_metadata(species_list,'all10','all.h5')
 
-representation_file = 'results/all10bin/all10bin_MouseHumanAllGenes_filteredrep.txt'
-output_file = 'all10bin_MouseHumanAllGenes_filteredrep_tSNE.txt'
-write_projection(representation_file,output_file,method='tSNE')
+# representation_file = 'results/all10bin/all10bin_MouseHumanAllGenes_filteredrep.txt'
+# output_file = 'all10bin_MouseHumanAllGenes_filteredrep_tSNE.txt'
+# write_projection(representation_file,output_file,method='tSNE')
 
 # model_name = 'Mouse_Human_dense_model' # model is densely connected network
 # model_dir = 'results/Mouse_Human/'

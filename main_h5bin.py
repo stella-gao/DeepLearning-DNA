@@ -44,12 +44,12 @@ filter_width = 5
 learning_rate = 0.0001
 
 species_dir = str(sys.argv[1])
-outfile_name = species_dir + 'Binary3Branches'
+outfile_name = species_dir + 'Binary3BranchesAtt'
 print(species_dir)
 
 train_h5file = 'data/h5datasets/' + str(species_dir) + '/train.h5'
 validation_h5file = 'data/h5datasets/' + str(species_dir) + '/validation.h5'
-# allgenes_h5file = 'data/h5datasets/' + str(species_dir) + '/all.h5'
+allgenes_h5file = 'data/h5datasets/' + str(species_dir) + '/all.h5'
 
 # print hyperparameters
 print('Batch Size: ' + str(batch_size))
@@ -111,6 +111,52 @@ def RNN(x,n_steps,n_hidden,n_classes,celltype='LSTM',return_seq=False):
 
     return class_output
 
+def biRNN(x,n_steps,n_hidden,n_classes,celltype='LSTM',return_seq=False):
+    # input shape: (batch_size, n_steps, n_input)
+    # converted shape:'n_steps' tensors list of shape (batch_size, n_input)
+
+    # define weights, biases for LSTM component
+    weights = {'out': tf.Variable(tf.random_normal([2*n_hidden, n_classes]))}
+    biases = {'out': tf.Variable(tf.random_normal([n_classes]))}
+
+    # Unstack to get a list of 'n_steps' tensors of shape (batch_size, n_input)
+    x = tf.unstack(x, n_steps, 1)
+
+    if celltype == 'LSTM':
+        cell_fw = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
+        cell_bw = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
+    elif celltype == 'GRU':
+        cell_fw = tf.contrib.rnn.GRUCell(n_hidden)
+        cell_bw = tf.contrib.rnn.GRUCell(n_hidden)
+
+    outputs,_,_ = tf.contrib.rnn.static_bidirectional_rnn(cell_fw,cell_bw,x,dtype=tf.float32)
+
+    if return_seq:
+        class_output = [tf.matmul(outp, weights['out']) + biases['out'] for outp in outputs]
+    else:
+        class_output = tf.matmul(outputs[-1], weights['out']) + biases['out']
+
+    return class_output
+
+def attention(input_list):
+
+    # one-layer MLP to get representation of each RNN output (i.e. tensor in input_list)
+    annotRep = [Dense(50,activation='tanh')(inp) for inp in input_list]
+
+    # context vector
+    contextVecs = [tf.Variable(tf.random_normal([50])) for i in range(len(input_list))]
+
+    # multiply context vectors and RNN output representations + apply softmax function
+    # (to get normalized importance weights)
+    impWeights = [tf.nn.softmax(tf.multiply(annotRep[i],contextVecs[i])) for i \
+        in range(len(input_list))]
+
+    # multiply original input tensors with importance weights and add products
+    seqVec = tf.add_n([tf.multiply(input_list[i],impWeights[i]) for i in range(len(input_list))])
+    
+    return seqVec
+
+
 def predPrecisionRecall(pred_probs_list,binlabel_arr):
 
     preds = [1*(pred_arr[:,0] > 0.5) for pred_arr in pred_probs_list]
@@ -131,10 +177,10 @@ val_datsize = min(1000,validation_file.values()[0].shape[0])
 validation_dat = validation_file['dnaseq'][0:val_datsize]
 validation_labels = validation_file['species_labels'][0:val_datsize]
 
-# # read in HDF5 file for all genes data
-# allgenes_file = h5py.File(allgenes_h5file,'r')
-# allgenes_dat = allgenes_file['dnaseq'][:]
-# allgenes_labels = allgenes_file['species_labels'][:]
+# read in HDF5 file for all genes data
+allgenes_file = h5py.File(allgenes_h5file,'r')
+allgenes_dat = allgenes_file['dnaseq'][:]
+allgenes_labels = allgenes_file['species_labels'][:]
 
 # create CallBack Tensorboard object
 tbCallBack = callbacks.TensorBoard(log_dir='./blah', histogram_freq=0, \
@@ -155,6 +201,7 @@ dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='dna')
 with tf.variable_scope('RNN1'):
     reshapedDNA = tf.reshape(tf.squeeze(dna,[3]),[tf.shape(dna)[0],n_steps,int(promoter_length/n_steps)*4])
     rnn1 = RNN(reshapedDNA,n_steps,n_hidden,50,celltype='GRU',return_seq=True)
+    att1 = attention(rnn1)
 
 # Regular Convolution Branch
 with tf.variable_scope('RNN2'):
@@ -167,34 +214,28 @@ with tf.variable_scope('RNN2'):
     leak2 = LeakyReLU(alpha=.001)(conv2)
     pool2 = AveragePooling2D((1,2),strides=(1,2),name='AvgPoolTrans_2',padding='same')(leak2) 
     reshapedConv = tf.reshape(tf.squeeze(pool2,[1]),[tf.shape(dna)[0],61,16])
-    rnn2 = RNN(reshapedConv,61,n_hidden,50,celltype='GRU')
+    rnn2 = RNN(reshapedConv,61,n_hidden,50,celltype='GRU',return_seq=True)
+    att2 = attention(rnn2)
 
 # Dilated Convolution Branch
 with tf.variable_scope('RNN3'):
     convDil1 = Conv2D(32,[4,5],activation='linear',
                     name='convTrans_1',padding='valid',dilation_rate=(1,5))(dna)
     leakDil1 = LeakyReLU(alpha=.001)(convDil1)
-    print(leakDil1)
     poolDil1 = AveragePooling2D((1,2),strides=(1,2),name='AvgPoolTrans_1',padding='same')(leakDil1) 
     convDil2 = Conv2D(8,[1,5],activation='linear',
                     name='convTrans_2',padding='valid',dilation_rate=(1,5))(poolDil1)
     leakDil2 = LeakyReLU(alpha=.001)(convDil2)
     poolDil2 = AveragePooling2D((1,2),strides=(1,2),name='AvgPoolTrans_2',padding='same')(leakDil2) 
-    print(poolDil2)
     reshapedDilConv = tf.reshape(tf.squeeze(poolDil2,[1]),[tf.shape(dna)[0],55,16])
-    rnn3 = RNN(reshapedDilConv,55,n_hidden,50,celltype='GRU')    
+    rnn3 = RNN(reshapedDilConv,55,n_hidden,50,celltype='GRU',return_seq=True)  
+    att3 = attention(rnn3)
 
 # stack branch outputs
-stacked_layers = tf.reshape(tf.concat([rnn1,rnn2,rnn3],1),shape = [-1,3,50])
-
-# # build layers of network
-# drop1 = conv_pool_drop(dna,1,filter_height1,filter_width,num_filters)
-# drop2 = conv_pool_drop(drop1,2,filter_height2,filter_width,num_filters)
-# drop3 = conv_pool_drop(drop2,3,filter_height2,filter_width,num_filters)
-# drop4 = conv_pool_drop(drop2,4,filter_height2,filter_width,num_filters)
+stacked_layers = tf.reshape(tf.concat([att1,att2,att3],1),shape = [-1,3,50])
 
 flat = Flatten()(stacked_layers)
-allFC = Dense(100,activation='relu',name='representationAll')(flat)
+allFC = Dense(50,activation='relu',name='representationAll')(flat)
 FC_list = [Dense(50,activation='relu',name='representation_'+str(i))(allFC) \
     for i in range(num_species)]
 preds_list = [Dense(2,activation='softmax')(FC_list[i]) for i in range(num_species)]
@@ -228,16 +269,6 @@ for i in range(num_species):
     onematch += tf.reduce_sum(tf.multiply(predTrue,tf.gather(tf.transpose(labels_list[i]),[0])))
 onematch_acc = tf.divide(onematch,tf.cast(tf.shape(preds_list[0])[0],tf.float32))
 
-# onematch_pred = tf.equal(tf.argmax(tf.multiply(labels,preds),axis=-1), \
-#         tf.argmax(preds,axis=-1))
-# onematch = tf.reduce_mean(tf.cast(onematch_pred, tf.float32))
-
-# # sum of categorical accuracy values
-# acc = 0
-# for i in range(num_species):
-#     correct_pred = tf.equal(tf.argmax(preds_list[i], 1), tf.argmax(labels_list[i], 1))
-#     acc += tf.divide(tf.reduce_mean(tf.cast(correct_pred, tf.float32)),num_species)
-
 # determine number of total iterations
 totalIterations = int(epochs/batch_size*train_size)
 
@@ -261,7 +292,7 @@ with sess.as_default():
     print('epochs\ttrain_exactmatch\ttrain_prec\ttrain_recall\ttrain_loss\tval_exactmatch\tval_prec\tval_recall\tval_loss')
     writer.writerow(['epochs','train_exactmatch','train_prec','train_recall','train_loss','val_exactmatch','val_prec','val_recall','val_loss'])
 
-    # f.close()
+    f.close()
 
     for i in range(totalIterations):
         batch = train_batcher.next()
@@ -315,7 +346,6 @@ with sess.as_default():
                 lowest_val_loss = val_loss
 
     # write representational output to file
-
     for i in range(0,allgenes_dat.shape[0],50):
         # run session and get output of representational layer
         allgenes_feed_dict = {labels_list[j]: allgenes_labels[i:i+50,j] for j in range(num_species)}
@@ -327,8 +357,3 @@ with sess.as_default():
         for j in range(rep_output.shape[0]):
             writer.writerow(rep_output[j])
         f.close()
-
-    # # write representational output to file
-    # np.savetxt(outfile_name + '_rep.txt',rep_layer,delimiter='\t')
-
-f.close()
