@@ -55,6 +55,30 @@ def conv_pool_drop(input_tensor,layer_num,filter_height,filter_width,kernelReg=N
 
     return drop
 
+def RNN(x,n_steps,n_hidden,n_classes,celltype='LSTM',return_seq=False):
+    # input shape: (batch_size, n_steps, n_input)
+    # converted shape:'n_steps' tensors list of shape (batch_size, n_input)
+
+    # define weights, biases for LSTM component
+    weights = {'out': tf.Variable(tf.random_normal([n_hidden, n_classes]))}
+    biases = {'out': tf.Variable(tf.random_normal([n_classes]))}
+
+    # Unstack to get a list of 'n_steps' tensors of shape (batch_size, n_input)
+    x = tf.unstack(x, n_steps, 1)
+
+    if celltype == 'LSTM':
+        cell = tf.contrib.rnn.BasicLSTMCell(n_hidden, forget_bias=1.0)
+    elif celltype == 'GRU':
+        cell = tf.contrib.rnn.GRUCell(n_hidden)
+    outputs, states = tf.contrib.rnn.static_rnn(cell, x, dtype=tf.float32)
+
+    if return_seq:
+        class_output = [tf.matmul(outp, weights['out']) + biases['out'] for outp in outputs]
+    else:
+        class_output = tf.matmul(outputs[-1], weights['out']) + biases['out']
+
+    return class_output
+
 species_dir = str(sys.argv[1])
 print(species_dir)
 
@@ -90,14 +114,14 @@ train_batcher = train_data.batcher()
 validation_file = h5py.File(validation_h5file,'r')
 val_datsize = min(10000,validation_file.values()[0].shape[0])
 validation_dat = validation_file['dnaseq'][0:val_datsize]
-validation_labels = validation_file['species_labels'][0:val_datsize]
+validation_labels = validation_file['labels'][0:val_datsize]
 
 # create CallBack Tensorboard object
 tbCallBack = callbacks.TensorBoard(log_dir='./blah', histogram_freq=0, \
         write_graph=True, write_images=True)
 
 train_size = train_file.values()[0].shape[0]
-num_species = train_file['species_labels'].shape[1]
+num_species = train_file['labels'].shape[1]
 
 # define placeholder for DNA sequences (represented via one-hot encoding)
 dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='dna')
@@ -105,13 +129,26 @@ dna = tf.placeholder(tf.float32,shape=(None,4,promoter_length,1),name='dna')
 # define placeholder for species labels
 labels = tf.placeholder(tf.float32,shape=(None,num_species),name='label')
 
-# build layers of network
-drop1 = conv_pool_drop(dna,1,filter_height1,filter_width)
-drop2 = conv_pool_drop(drop1,2,filter_height2,filter_width)
-drop3 = conv_pool_drop(drop2,3,filter_height2,filter_width)
+# # build layers of network
+# drop1 = conv_pool_drop(dna,1,filter_height1,filter_width)
+# drop2 = conv_pool_drop(drop1,2,filter_height2,filter_width)
+# drop3 = conv_pool_drop(drop2,3,filter_height2,filter_width)
 
-flat = Flatten()(drop3)
-FC = Dense(50,activation='relu',name='representation')(flat)
+# Regular Convolution Branch
+with tf.variable_scope('RNN2'):
+    conv1 = Conv2D(32,[4,5],activation='linear',
+                    name='convTrans_1',padding='valid')(dna)
+    leak1 = LeakyReLU(alpha=.001)(conv1)
+    pool1 = AveragePooling2D((1,2),strides=(1,2),name='AvgPoolTrans_1',padding='same')(leak1) 
+    conv2 = Conv2D(8,[1,5],activation='linear',
+                    name='convTrans_2',padding='valid')(pool1)
+    leak2 = LeakyReLU(alpha=.001)(conv2)
+    pool2 = AveragePooling2D((1,2),strides=(1,2),name='AvgPoolTrans_2',padding='same')(leak2) 
+    reshapedConv = tf.reshape(tf.squeeze(pool2,[1]),[tf.shape(dna)[0],61,16])
+    rnn2 = RNN(reshapedConv,61,128,50,celltype='GRU')
+
+# flat = Flatten()(stacked_layers)
+FC = Dense(50,activation='relu',name='representation')(rnn2)
 preds = Dense(num_species,activation='softmax')(FC)
 
 # loss function
@@ -145,7 +182,7 @@ with sess.as_default():
     for i in range(totalIterations):
         batch = train_batcher.next()
         sess.run([train_step],feed_dict={dna: batch['dnaseq'], \
-            labels: batch['species_labels'], K.learning_phase(): 1})
+            labels: batch['labels'], K.learning_phase(): 1})
 
         # log training and validation accuracy
         if i%1000 == 0:
@@ -153,7 +190,7 @@ with sess.as_default():
             epoch_num = i/train_size*batch_size
 
             train_acc,train_loss = sess.run([accuracy,loss],feed_dict={dna: batch['dnaseq'], \
-                labels: batch['species_labels'], K.learning_phase(): 0})
+                labels: batch['labels'], K.learning_phase(): 0})
 
             val_acc,val_loss = sess.run([accuracy,loss],feed_dict={dna: validation_dat, \
                 labels: validation_labels, K.learning_phase(): 0})

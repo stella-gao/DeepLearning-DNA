@@ -97,7 +97,7 @@ def filterLabels(representation_file,metadata_file,index_set,output_file):
 def filterGenes(representation_file,metadata_file,index_set,gene_list,output_file):
 	'''takes in a .txt file of representational layer outputs along with the
 	corresponding raw data file (in H5 format) and filters out the 
-	representational layer outputs that are associated with an inputted label'''	
+	representational layer outputs that are associated with an inputted gene list'''	
 
 	rep_dat = np.loadtxt(representation_file,delimiter='\t')
 
@@ -687,8 +687,9 @@ def write_projection(representation_file,output_file,method='PCA'):
 	elif method == 'tSNE':
 		# from sklearn.manifold import TSNE
 		from bhtsne import tsne
-		model = TSNE(n_components=3,perplexity=50,n_iter=400)
-		transformed_X = model.fit_transform(X) 
+		# model = TSNE(n_components=10,perplexity=50,n_iter=400)
+		# transformed_X = model.fit_transform(X) 
+		transformed_X = tsne(X,dimensions=5)
 
 	np.savetxt(output_file,transformed_X,delimiter='\t')
 
@@ -848,9 +849,9 @@ def getCertainSeq(certainGenes_file,uncertainGenes_file,promoterSeq_file,promote
 # species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','Chicken','aThal','Lizard']
 # write_metadata(species_list,'all10','all.h5')
 
-# representation_file = 'results/all10bin/all10bin_MouseHumanAllGenes_filteredrep.txt'
-# output_file = 'all10bin_MouseHumanAllGenes_filteredrep_tSNE.txt'
-# write_projection(representation_file,output_file,method='tSNE')
+representation_file = 'results/all10bin/all10bin_MouseHumanLizardAllGenes_filteredrep.txt'
+output_file = 'all10bin_MouseHumanLizardAllGenes_filteredrep_tSNE.txt'
+write_projection(representation_file,output_file,method='tSNE')
 
 # model_name = 'Mouse_Human_dense_model' # model is densely connected network
 # model_dir = 'results/Mouse_Human/'
@@ -870,8 +871,8 @@ def getCertainSeq(certainGenes_file,uncertainGenes_file,promoterSeq_file,promote
 
 # representation_file = 'results/all10bin/all10binBinary_model_repAllGenes.txt'
 # metadata_file = 'results/all10/all10_metadataAllGenes.tsv'
-# index_set = [2,3]
-# output_file = 'all10bin_MouseHumanAllGenes'
+# index_set = [2,3,9]
+# output_file = 'all10bin_MouseHumanLizardAllGenes'
 # filterLabels(representation_file,metadata_file,index_set,output_file)
 
 # sess = tf.Session()

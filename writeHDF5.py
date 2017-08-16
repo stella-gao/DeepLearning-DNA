@@ -268,6 +268,8 @@ def combine_species_allgenes(species_list,upstream_length,promoter_length):
 	f.create_dataset('species',data=allgenes_species_list,dtype=dt,compression='gzip')
 	f.close()
 
+##############################################################################
+
 def filterDatabySpeciesLabel(h5_file,outfile,inds_to_keep):
 	'''identifies the data stored in an H5 file that correspond to an inputted 
 	set of desired label indices and writes this filtered data to another H5 
@@ -405,8 +407,158 @@ def evenHDF5(h5_file,dir_name,num_samples):
 	f.close()
 	g.close()
 
+def splitGenesHDF5(h5_file,geneFile,species,outfile):
+	'''takes an existing HDF5 file, filters out a specified species, and creates
+	a training and a validation dataset with labels specifying whether or not 
+	each data point belongs to a given set of genes'''
+
+	# get gene list
+	f = open(geneFile,'r')
+	reader = csv.reader(f,delimiter='\t')
+	chosenGenes = [line[0] for line in reader]
+	f.close()
+
+	# get indices of data points associated with gene list
+	f = h5py.File(h5_file,'r')
+	h5_genes = f['genes'][:]
+	h5_species = f['species'][:]
+
+	geneIdx = [i for i in range(h5_genes.shape[0]) if str(h5_genes[i]) in chosenGenes and \
+		str(h5_species[i])==species]
+	nongeneIdx = [i for i in range(h5_genes.shape[0]) if str(h5_genes[i]) not in chosenGenes and \
+		str(h5_species[i])==species]
+	nongeneIdx = list(np.random.choice(nongeneIdx,size=len(geneIdx),replace=False))
+
+	allIdx = np.array(geneIdx + nongeneIdx)
+
+	dat = f['dnaseq'][:][allIdx]
+	labels = getLabels([len(geneIdx),len(nongeneIdx)])
+	gene_list = h5_genes[allIdx]
+	species_list = h5_species[allIdx]
+	f.close()
+
+	# split into training and validation dataset
+	allIdx = range(dat.shape[0])
+	np.random.shuffle(allIdx)
+	trainIdx = allIdx[0:int(0.8*len(allIdx))]
+	valIdx = allIdx[int(0.8*len(allIdx)):]
+
+	# training data
+	train_dat = dat[trainIdx]
+	train_labels = labels[trainIdx]
+	train_genes = gene_list[trainIdx]
+	train_species = species_list[trainIdx]
+
+	# validation data
+	validation_dat = dat[valIdx]
+	validation_labels = labels[valIdx]
+	validation_genes = gene_list[valIdx]
+	validation_species = species_list[valIdx]
+
+	dt = h5py.special_dtype(vlen=unicode)
+
+	f = h5py.File(outfile + '.train.h5','w')
+	f.create_dataset('dnaseq',data=train_dat,dtype='f',compression='gzip')
+	f.create_dataset('labels',data=train_labels,dtype='f',compression='gzip')
+	f.create_dataset('genes',data=train_genes,dtype=dt,compression='gzip')
+	f.create_dataset('species',data=train_species,dtype=dt,compression='gzip')
+	f.close()
+
+	f = h5py.File(outfile + '.validation.h5','w')
+	f.create_dataset('dnaseq',data=validation_dat,dtype='f',compression='gzip')
+	f.create_dataset('labels',data=validation_labels,dtype='f',compression='gzip')
+	f.create_dataset('genes',data=validation_genes,dtype=dt,compression='gzip')
+	f.create_dataset('species',data=validation_species,dtype=dt,compression='gzip')
+
+	f.close()
+
+def splitGenesSpeciesHDF5(h5_file,geneFile_list,chosenSpecies,outfile):
+	'''takes an existing HDF5 file, filters out a specified species, and creates
+	a training and a validation dataset with labels specifying whether or not 
+	each data point belongs to a given set of genes'''
+
+	# get gene lists
+	chosenGenes = []
+	for i in range(len(geneFile_list)):
+		geneFile = geneFile_list[i]
+		species = chosenSpecies[i]
+		f = open(geneFile,'r')
+		reader = csv.reader(f,delimiter='\t')
+		chosenGenes_list = [(line[0],species) for line in reader]
+		chosenGenes.extend(chosenGenes_list)
+		f.close()
+
+	# get indices of data points associated with gene list
+	f = h5py.File(h5_file,'r')
+	h5_genes = f['genes'][:]
+	h5_species = f['species'][:]
+
+	geneIdx = [i for i in range(h5_genes.shape[0]) if \
+		(str(h5_genes[i]),str(h5_species[i])) in chosenGenes]
+
+	allIdx = geneIdx
+
+	dat = f['dnaseq'][:][allIdx]
+	gene_list = h5_genes[allIdx]
+	species_list = h5_species[allIdx]
+	f.close()
+
+	# create labels
+	label_set = np.identity(len(chosenSpecies),dtype=np.float32)
+	label_dict = {chosenSpecies[i]: label_set[i] for i in range(len(chosenSpecies))}
+	labels = np.array([label_dict[species] for species in species_list])
+	
+	# split into training and validation dataset
+	allIdx = range(dat.shape[0])
+	np.random.shuffle(allIdx)
+	trainIdx = allIdx[0:int(0.8*len(allIdx))]
+	valIdx = allIdx[int(0.8*len(allIdx)):]
+
+	# training data
+	train_dat = dat[trainIdx]
+	train_labels = labels[trainIdx]
+	train_genes = gene_list[trainIdx]
+	train_species = species_list[trainIdx]
+
+	# validation data
+	validation_dat = dat[valIdx]
+	validation_labels = labels[valIdx]
+	validation_genes = gene_list[valIdx]
+	validation_species = species_list[valIdx]
+
+	dt = h5py.special_dtype(vlen=unicode)
+
+	f = h5py.File(outfile + '.train.h5','w')
+	f.create_dataset('dnaseq',data=train_dat,dtype='f',compression='gzip')
+	f.create_dataset('labels',data=train_labels,dtype='f',compression='gzip')
+	f.create_dataset('genes',data=train_genes,dtype=dt,compression='gzip')
+	f.create_dataset('species',data=train_species,dtype=dt,compression='gzip')
+	f.close()
+
+	f = h5py.File(outfile + '.validation.h5','w')
+	f.create_dataset('dnaseq',data=validation_dat,dtype='f',compression='gzip')
+	f.create_dataset('labels',data=validation_labels,dtype='f',compression='gzip')
+	f.create_dataset('genes',data=validation_genes,dtype=dt,compression='gzip')
+	f.create_dataset('species',data=validation_species,dtype=dt,compression='gzip')
+
+	f.close()
+
+def filterReps():
+	'''takes a file containing representations of data and 
+
+
+h5_file = 'data/h5datasets/all10bin/all.h5'
+geneFile1 = 'results/clustering/RShiny/selectedPointsHuman.txt'
+geneFile2 = 'results/clustering/RShiny/selectedPointsMouse.txt'
+geneFile_list = [geneFile1,geneFile2]
+species_list = ['Human','Mouse']
+
+outfile = 'Clusters'
+
+splitGenesSpeciesHDF5(h5_file,geneFile_list,species_list,outfile)
+
 # evenHDF5('validation.h5','data/h5datasets/all10/',1000)
-rewriteHDF5_binary('all.h5','data/h5datasets/all10/')
+# rewriteHDF5_binary('all.h5','data/h5datasets/all10/')
 
 # dir_name = 'data/h5datasets/all10/'
 # rewriteHDF5_binary('train.h5',dir_name)
@@ -435,7 +587,7 @@ rewriteHDF5_binary('all.h5','data/h5datasets/all10/')
 # window_step = 100
 
 species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','Chicken','aThal','Lizard']
-combine_species_allgenes(species_list,upstream_length,promoter_length)
+# combine_species_allgenes(species_list,upstream_length,promoter_length)
 
 # # species_list = ['Mouse','Human']
 # species_list = ['sCer','cEleg','Mouse','Human','sPom','Zebrafish','dMelan','Chicken','aThal','Lizard']
